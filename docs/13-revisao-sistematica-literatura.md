@@ -4,141 +4,803 @@ Este documento sintetiza o estado da arte em Recuperação de Informação (IR),
 
 A revisão está organizada em quatro eixos:
 
-1. Evolução dos paradigmas de RAG
+1. Evolução dos paradigmas de RAG (com diagramas de cada um)
 2. Estratégias de recuperação (lexical, densa, híbrida)
 3. Aprimoramentos do pipeline (chunking, reranking, query expansion)
-4. Arquiteturas modulares e agênticas
+4. Arquiteturas modulares e agênticas (com diagramas detalhados)
 
 ---
 
 ## 1. A evolução dos paradigmas de RAG
 
-A literatura organiza a evolução do RAG em três grandes paradigmas, conforme a taxonomia consolidada por Gao et al. (2024), em "Retrieval-Augmented Generation for Large Language Models: A Survey", que examina detalhadamente a progressão dos paradigmas, encompassando Naive RAG, Advanced RAG e Modular RAG.
+A literatura organiza a evolução do RAG em três grandes paradigmas, conforme a taxonomia consolidada por Gao et al. (2024). Cada paradigma representa um aprimoramento progressivo sobre o anterior, mantendo uma relação de herança: Advanced RAG é caso especial de Modular RAG, e Naive RAG é caso especial de Advanced RAG.
 
-### Naive RAG
+---
 
-O paradigma fundacional, introduzido por Lewis et al. (2020). Consiste em três etapas lineares: indexação, recuperação e geração. Naive RAG enfrenta múltiplos desafios em recuperação, geração e aumentação — entre eles, baixa precisão no retrieval, dificuldade com queries ambíguas e tendência a passar contexto irrelevante para o LLM.
+### 1.1 Naive RAG — o paradigma fundacional
 
-### Advanced RAG
+Introduzido por Lewis et al. (2020). Consiste em três etapas lineares, sem otimizações em nenhuma delas.
 
-Surge como resposta às limitações do Naive RAG. O paradigma Advanced RAG envolve processamento adicional na pré-recuperação e pós-recuperação. Antes da recuperação, métodos como reescrita de query, roteamento e expansão podem ser usados para alinhar diferenças semânticas entre perguntas e chunks de documentos. Após a recuperação, reranquear o corpus de documentos recuperados pode evitar o fenômeno "Lost in the Middle".
+**Diagrama de fluxo:**
 
-As técnicas centrais que caracterizam Advanced RAG, segundo a literatura recente:
+```
+═══════════════════════════════════════════════════════════════════
+ NAIVE RAG
+═══════════════════════════════════════════════════════════════════
 
-- **Pré-recuperação**: query expansion, query rewriting, HyDE (Hypothetical Document Embeddings).
-- **Pós-recuperação**: reranking com cross-encoders, compressão de contexto, fusão de resultados (RRF).
+INGESTÃO (offline)
+─────────────────────────────────────────
+[documentos]
+      ↓
+[chunking simples]              ← divisão por tamanho fixo
+      ↓
+[embedding denso]               ← um único modelo de embedding
+      ↓
+[banco vetorial]
 
-### Modular RAG
 
-Representa o estado da arte atual. Gao et al. (2024), em trabalho subsequente, propõem o framework Modular RAG: examina as limitações do paradigma RAG existente e introduz o framework Modular RAG, que transcende a arquitetura linear tradicional, abraçando um design mais avançado que integra mecanismos de roteamento, escalonamento e fusão.
+CONSULTA (online)
+─────────────────────────────────────────
+[query do usuário]
+      ↓
+[embedding da query]
+      ↓
+[busca por similaridade (top-k)]   ← geralmente k=5 a 10
+      ↓
+[chunks recuperados]
+      ↓
+[prompt: query + chunks]
+      ↓
+[LLM gera resposta]
+      ↓
+[resposta para o usuário]
+```
 
-A literatura caracteriza o Modular RAG como uma decomposição em componentes reconfiguráveis. Ao decompor sistemas RAG complexos em módulos independentes e operadores especializados, facilita um framework altamente reconfigurável. Os três paradigmas mantêm uma relação de herança: Advanced RAG é um caso especial de Modular RAG, enquanto Naive RAG é um caso especial de Advanced RAG.
+**Detalhes das etapas:**
 
-### A consolidação em 2024–2026
+1. **Chunking** — divisão por tamanho fixo (ex: 500 caracteres), sem respeitar estrutura.
+2. **Embedding** — modelo único (ex: text-embedding-ada-002), aplicado tanto na ingestão quanto na query.
+3. **Busca** — similaridade de cosseno entre o vetor da query e os vetores dos chunks, retorna os k mais próximos.
+4. **Geração** — todos os chunks recuperados vão para o prompt do LLM, sem reordenação ou filtragem.
 
-Análises recentes confirmam essa consolidação. Entre 2024 e o final de 2025, RAG amadureceu de pipelines lineares de "recupere-depois-gere" para sistemas modulares e agênticos capazes de planejamento, uso de ferramentas e auto-correção. As três mudanças que definem o estado da arte segundo essa síntese: recuperação híbrida e re-rankeada para superar os limites do vetorial-apenas, raciocínio estruturado via GraphRAG, e laços de controle autônomos (RAG Agêntico) que iterativamente planejam, recuperam e verificam.
+**Problemas documentados:**
+
+- **Lost in the Middle** — quando muitos chunks vão para o prompt, o LLM tende a ignorar os do meio.
+- **Sem distinção lexical** — perde queries com termos exatos (códigos, IDs, jargão).
+- **Sem adaptação** — trata query simples e complexa do mesmo jeito.
+
+---
+
+### 1.2 Advanced RAG — otimizações em pré e pós-retrieval
+
+Surge como resposta às limitações do Naive RAG, adicionando otimizações **antes** e **depois** da etapa de busca, mantendo o pipeline linear.
+
+**Diagrama de fluxo:**
+
+```
+═══════════════════════════════════════════════════════════════════
+ ADVANCED RAG
+═══════════════════════════════════════════════════════════════════
+
+INGESTÃO (offline)
+─────────────────────────────────────────
+[documentos]
+      ↓
+[chunking otimizado]            ← recursive / semantic / structure-aware
+      ↓
+[embedding denso]
+      ↓
+[banco vetorial]
+      ↓
+[metadados extraídos]           ← fonte, página, data
+
+
+CONSULTA (online)
+─────────────────────────────────────────
+[query do usuário]
+      ↓
+═══ PRÉ-RETRIEVAL ════════════════════════════════════
+      ↓
+[query rewriting / expansion]   ← LLM reformula ou expande
+      ↓
+[HyDE opcional]                 ← gera resposta hipotética
+      ↓                            e usa o embedding dela
+      ↓
+═══ RETRIEVAL ════════════════════════════════════════
+      ↓
+[busca vetorial (top-N maior)]  ← ex: top-50 em vez de top-5
+      ↓
+═══ PÓS-RETRIEVAL ════════════════════════════════════
+      ↓
+[reranking com cross-encoder]   ← reordena os 50
+      ↓
+[seleção dos top-k finais]      ← top-5 mais relevantes
+      ↓
+[compressão de contexto]        ← opcional: remove ruído
+      ↓
+═══ GERAÇÃO ══════════════════════════════════════════
+      ↓
+[prompt: query + top-k]
+      ↓
+[LLM gera resposta]
+      ↓
+[resposta]
+```
+
+**Detalhes das técnicas usadas:**
+
+**Pré-retrieval:**
+
+- **Query rewriting** — LLM reformula a query para torná-la mais clara ou específica.
+- **Query expansion** — gera sinônimos e termos relacionados (ex: "rescisão" → "rescisão, distrato, encerramento, resilição").
+- **HyDE (Hypothetical Document Embeddings)** — pede ao LLM para gerar uma resposta hipotética à query, e usa o embedding **dessa resposta** para buscar (a hipótese é que a resposta hipotética está mais próxima dos chunks reais do que a query crua).
+
+**Pós-retrieval:**
+
+- **Reranking** — modelos cross-encoder analisam pares (query, chunk) com mais cuidado e reordenam.
+- **Compressão de contexto** — remove sentenças irrelevantes dos chunks antes de mandar pro LLM, economizando tokens.
+
+---
+
+### 1.3 Modular RAG — o paradigma reconfigurável
+
+O estado da arte atual. Gao et al. (2024) descrevem o framework como uma estrutura "LEGO" — componentes independentes que podem ser combinados de várias formas.
+
+**Diagrama conceitual:**
+
+```
+═══════════════════════════════════════════════════════════════════
+ MODULAR RAG — pipeline configurável
+═══════════════════════════════════════════════════════════════════
+
+                    ┌──────────────────────┐
+                    │       ROUTER          │  ← decide o caminho
+                    │  (classificador)      │
+                    └──────────┬───────────┘
+                               ↓
+        ┌──────────────┬───────┴───────┬──────────────┐
+        ↓              ↓               ↓              ↓
+    ┌────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ Query  │    │ Lexical │    │  Dense  │    │  Graph  │
+    │ Module │    │ Retr.   │    │  Retr.  │    │  Retr.  │
+    └────┬───┘    └────┬────┘    └────┬────┘    └────┬────┘
+         │             │              │              │
+         └─────────────┴──────────────┴──────────────┘
+                              ↓
+                    ┌──────────────────────┐
+                    │       FUSION          │  ← RRF, weighted, etc.
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │       RERANKER        │  ← opcional
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │      VALIDATOR        │  ← opcional
+                    │  (verifica qualidade) │
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │      GENERATOR        │
+                    │       (LLM)           │
+                    └──────────┬───────────┘
+                               ↓
+                          [resposta]
+```
+
+**Operadores típicos no Modular RAG:**
+
+| Categoria | Operadores |
+|---|---|
+| **Indexação** | Chunking, Embedding (denso/esparso), Indexing |
+| **Pré-retrieval** | Query rewriting, Query expansion, Routing, Decomposition |
+| **Retrieval** | Sparse search, Dense search, Hybrid search, Graph search |
+| **Pós-retrieval** | Reranking, Fusion (RRF), Compression, Filtering |
+| **Validação** | Quality scoring, Faithfulness check, Web fallback |
+| **Geração** | Prompting, Streaming, Citation, Self-reflection |
+
+**O que muda em relação ao Advanced RAG:**
+
+- Pipeline deixa de ser linear fixo — passa a ser um **grafo configurável**.
+- Componentes podem ser ativados/desativados/substituídos sem refatorar o resto.
+- Roteamento dinâmico permite caminhos diferentes para queries diferentes.
+- Suporta orquestração via frameworks como LangGraph e DSPy.
 
 ---
 
 ## 2. Estratégias de recuperação
 
-### Limites do retrieval puramente vetorial
+### 2.1 Limites do retrieval puramente vetorial
 
-A literatura é convergente em apontar as limitações do retrieval denso isolado. Limitações do retrieval vetorial-apenas (deriva semântica, tensão recall-precisão, lacunas relacionais) impulsionaram a hibridização com retrieval esparso e a adição de re-ranking por cross-encoder para melhorar fundamentação e reduzir alucinações.
+A literatura é convergente em apontar as limitações do retrieval denso isolado: deriva semântica, tensão recall-precisão, lacunas relacionais. Análises de produção identificam padrões consistentes de falha.
 
-Análises de produção identificam um padrão consistente de falha: os tipos de query que sistematicamente falham sob retrieval denso puro seguem um padrão consistente: códigos de erro e identificadores (strings exatas como 0x80070005, INV-2024-00847 ou ENOMEM têm sinal de representação semântica próximo de zero); SKUs de produtos e números de modelo (RTX-4090 e RTX-4070 são semanticamente quase idênticos no espaço de embedding, mas são produtos diferentes).
+**Tipos de query onde a busca densa falha sistematicamente:**
 
-### BM25 — relevância renovada
+```
+PADRÃO DE FALHA DA BUSCA DENSA
+─────────────────────────────────────────
 
-Apesar de ser um algoritmo das décadas de 1980-90, BM25 mantém papel central. BM25 permanece altamente competitivo e frequentemente supera os recuperadores neurais sob condições de correspondência lexical: em QA de domínio aberto (Natural Questions), o recall top-1 de BM25 é 22.1%; recuperadores densos (DPR) atingem 48.7%, mas pipelines híbridos chegam a 53.4%.
+Query: "0x80070005"  (código de erro Windows)
+       ↓
+   embedding → [0.12, 0.45, 0.33, ...]
+       ↓
+   vetores próximos no espaço:
+       ─ "0x80070006"   ← código diferente, semanticamente vizinho ❌
+       ─ "0x8007000F"   ← código diferente, semanticamente vizinho ❌
+       ─ "ERR_ACCESS"   ← outro código, vetor próximo             ❌
 
-Um achado contraintuitivo em domínios específicos: BM25 supera o retrieval denso de estado da arte em documentos financeiros, desafiando a suposição comum de que a busca semântica universalmente domina. Esse resultado reforça o argumento contra adotar retrieval denso como única estratégia em frameworks genéricos.
+Query: "RTX 4090"  (SKU de produto)
+       ↓
+   vetores próximos:
+       ─ "RTX 4070"     ← produto DIFERENTE                        ❌
+       ─ "RTX 4080"     ← produto DIFERENTE                        ❌
 
-### Busca híbrida como linha de base
+→ Códigos exatos têm sinal semântico próximo de zero
+→ BM25 acerta isso direto
+```
 
-A literatura recente é praticamente unânime em recomendar busca híbrida como padrão. Busca híbrida (densa + esparsa) mais re-ranking tornou-se a stack de linha de base, consistentemente superando retrieval de método único em relevância e factualidade em tarefas empresariais de QA e busca.
+### 2.2 BM25 — fluxo do algoritmo
 
-Em uma ampla gama de benchmarks de retrieval e RAG, o BM25 híbrido consistentemente supera tanto recuperadores apenas-esparsos quanto apenas-densos — frequentemente por margens de dois dígitos em nDCG e MAP.
+```
+═══════════════════════════════════════════════════════════════════
+ BM25 — RETRIEVAL LEXICAL
+═══════════════════════════════════════════════════════════════════
 
-### Reciprocal Rank Fusion (RRF)
+INGESTÃO
+─────────────────────────────────────────
+[documento: "O contrato pode ser rescindido em 30 dias"]
+      ↓
+[tokenização]
+      ↓
+[tokens: "contrato", "pode", "ser", "rescindido", "30", "dias"]
+      ↓
+[índice invertido]
+      ↓
+"contrato"    → [doc_1, doc_15, doc_42, ...]
+"rescindido"  → [doc_1, doc_88, ...]
+"30"          → [doc_1, doc_12, doc_77, ...]
 
-O método dominante de fusão entre buscas densa e esparsa. Top-k denso e top-k BM25 em paralelo. Fusão via RRF (pontuação de busca híbrida usando RRF). O RRF é preferido por não exigir calibração entre escalas de score — ele opera apenas sobre as posições (ranks).
 
-### Modelos esparsos neurais
+CONSULTA
+─────────────────────────────────────────
+[query: "prazo de rescisão"]
+      ↓
+[tokens: "prazo", "rescisão"]
+      ↓
+[para cada token, calcula score em cada doc]
+      ↓
+   Para cada documento candidato d e termo t:
+   ┌─────────────────────────────────────┐
+   │  score(t, d) = IDF(t) × TF_norm     │
+   │                                       │
+   │  IDF(t) = log(N / df(t))             │
+   │     ↑ termo raro vale mais           │
+   │                                       │
+   │  TF_norm = saturação(freq(t,d))     │
+   │     ↑ repetir não vale infinito     │
+   └─────────────────────────────────────┘
+      ↓
+[score total = soma dos scores por token]
+      ↓
+[ordenação por score]
+      ↓
+[top-k documentos]
+```
 
-Uma evolução recente são os modelos esparsos aprendidos (SPLADE, BGE-M3). Modelos como BGE-M3 (lançado em janeiro de 2024) unificam modos densos, esparsos e de interação tardia em um único checkpoint de 550M parâmetros, reduzindo substancialmente a complexidade de infraestrutura para equipes que antes precisavam de três modelos separados.
+### 2.3 Busca densa — fluxo do algoritmo
 
-Há também extensões do próprio BM25. BMX estende o BM25 com similaridade ponderada por entropia e aumentação semântica via paráfrases geradas por LLM, melhorando o nDCG@10 em 1–2 pontos em cenários zero-shot e de contexto longo.
+```
+═══════════════════════════════════════════════════════════════════
+ BUSCA DENSA — RETRIEVAL SEMÂNTICO
+═══════════════════════════════════════════════════════════════════
+
+INGESTÃO
+─────────────────────────────────────────
+[documento]
+      ↓
+[chunking]
+      ↓
+[chunk: "O contrato pode ser rescindido em 30 dias"]
+      ↓
+[modelo de embedding]   ← BERT, OpenAI, Cohere, etc.
+      ↓
+[vetor denso: [0.23, 0.87, 0.12, 0.95, 0.44, ...]
+                ↑ 384 a 3072 dimensões]
+      ↓
+[banco vetorial com índice HNSW]
+
+
+CONSULTA
+─────────────────────────────────────────
+[query: "qual o prazo de rescisão?"]
+      ↓
+[mesmo modelo de embedding]
+      ↓
+[vetor da query: [0.21, 0.85, 0.13, 0.93, 0.46, ...]]
+      ↓
+[busca por similaridade no HNSW]
+      ↓
+   navegação aproximada no grafo:
+   camada superior → camada média → camada base
+      ↓
+[top-k mais próximos por similaridade de cosseno]
+```
+
+### 2.4 Busca híbrida — o consenso atual
+
+Combina BM25 e busca densa. Linha de base recomendada pela literatura recente.
+
+```
+═══════════════════════════════════════════════════════════════════
+ BUSCA HÍBRIDA — DENSO + ESPARSO + RRF
+═══════════════════════════════════════════════════════════════════
+
+INGESTÃO
+─────────────────────────────────────────
+[chunk]
+      ↓
+   ┌──┴──┐
+   ↓     ↓
+[embedding denso]    [embedding esparso (BM25 ou SPLADE)]
+   ↓     ↓
+   └──┬──┘
+      ↓
+[banco vetorial salva os DOIS vetores no mesmo ponto]
+
+
+CONSULTA
+─────────────────────────────────────────
+[query]
+      ↓
+   ┌──┴──┐
+   ↓     ↓
+[embedding denso da query]    [embedding esparso da query]
+   ↓                                    ↓
+[busca densa: top-50]         [busca esparsa: top-50]
+   ↓                                    ↓
+   └──────────────┬─────────────────────┘
+                  ↓
+═══════════════════════════════════════════
+       FUSÃO COM RRF
+═══════════════════════════════════════════
+                  ↓
+   Para cada documento d:
+   ┌────────────────────────────────────────┐
+   │  score_RRF(d) = Σ  1 / (k + rank(d,i))  │
+   │                 i                         │
+   │                                           │
+   │  i = cada lista (densa, esparsa)         │
+   │  rank(d,i) = posição de d na lista i     │
+   │  k = constante (geralmente 60)           │
+   └────────────────────────────────────────┘
+                  ↓
+   Exemplo:
+   doc_A: rank 1 na densa, rank 3 na esparsa
+   score = 1/(60+1) + 1/(60+3) = 0.0164 + 0.0159 = 0.0323
+
+   doc_B: rank 5 na densa, rank 1 na esparsa
+   score = 1/(60+5) + 1/(60+1) = 0.0154 + 0.0164 = 0.0318
+                  ↓
+[lista ordenada pelo RRF score]
+                  ↓
+[top-k finais (ex: top-50 para o reranker)]
+```
+
+**Por que RRF é preferido sobre soma de scores:** as escalas dos scores da busca densa (similaridade de cosseno, 0–1) e da busca esparsa (BM25, 0–∞) são completamente diferentes. Somar diretamente é tecnicamente errado. O RRF opera só sobre as **posições**, evitando esse problema.
 
 ---
 
 ## 3. Aprimoramentos do pipeline
 
-### Reranking como componente de maior impacto
+### 3.1 Reranking — fluxo detalhado
 
-Estudos comparativos recentes apontam o reranker como o componente isolado de maior ganho. Um pipeline de dois estágios combinando retrieval híbrido com reranking neural alcança Recall@5 de 0.816 e MRR@3 de 0.605, superando todos os métodos de estágio único por uma grande margem. Reranking é o componente isolado mais impactante.
+```
+═══════════════════════════════════════════════════════════════════
+ RERANKING COM CROSS-ENCODER
+═══════════════════════════════════════════════════════════════════
 
-Há restrições práticas de latência. Um cross-encoder sobre 30 candidatos custa aproximadamente 100–200ms no total. O mesmo modelo aplicado a 200 candidatos estoura o orçamento de latência em 5–10x. A regra prática: ajuste o recall do primeiro estágio para que não seja necessário reranquear mais de 50 candidatos. Se você precisa reranquear mais de 200 para obter precisão aceitável, o retrieval do primeiro estágio está quebrado.
+[query] + [50 candidatos do retrieval híbrido]
+      ↓
+═══ ETAPA 1: PREPARAR PARES ═══════════════════════
+      ↓
+   par 1:  (query, chunk_1)
+   par 2:  (query, chunk_2)
+   par 3:  (query, chunk_3)
+   ...
+   par 50: (query, chunk_50)
+      ↓
+═══ ETAPA 2: CROSS-ENCODER ═══════════════════════
+      ↓
+   Para cada par:
+   ┌─────────────────────────────────────┐
+   │   [CLS] query [SEP] chunk [SEP]      │
+   │            ↓                          │
+   │      modelo transformer              │
+   │      (BERT, MiniLM, etc.)            │
+   │            ↓                          │
+   │   score de relevância (0 a 1)        │
+   └─────────────────────────────────────┘
+      ↓
+═══ ETAPA 3: ORDENAÇÃO ═══════════════════════════
+      ↓
+   reordena 50 candidatos pelo novo score
+      ↓
+[top-5 ou top-10 finais]
+```
 
-Alternativas ao cross-encoder também emergem. A interação tardia estilo ColBERT oferece uma alternativa que fica entre bi-encoders e cross-encoders. O mecanismo MaxSim calcula relevância como a soma das similaridades máximas por token de query sobre os tokens do documento — preservando alinhamento em nível de frase enquanto permite que representações de documentos sejam pré-computadas.
+**Diferença entre bi-encoder (retrieval) e cross-encoder (rerank):**
 
-### Query Expansion — ganhos seletivos
+```
+BI-ENCODER (usado na busca rápida)
+─────────────────────────────────
+   query   →  encoder  →  vetor_query
+                                    ↘
+                                    similaridade
+                                    ↗
+   chunk   →  encoder  →  vetor_chunk
 
-A literatura mais recente é cautelosa com query expansion. Métodos de expansão de query (HyDE, multi-query) e retrieval adaptativo fornecem benefício limitado para queries numéricas precisas, enquanto retrieval contextual produz ganhos consistentes. O recomendado é tratar a query expansion como recurso opcional, configurável por caso de uso, não como padrão.
+   → vetores podem ser pré-computados
+   → busca é rápida (lookup no índice)
+   → menos precisa
 
-### Chunking
 
-Apesar de aparentemente trivial, a literatura aponta o chunking como fator que define a qualidade global do sistema. Estratégias documentadas:
+CROSS-ENCODER (usado no rerank)
+─────────────────────────────────
+   query + chunk  →  encoder  →  score direto
 
-- **Fixed-size chunking** — divisão por contagem de tokens.
-- **Recursive character chunking** — divisão respeitando hierarquia de separadores (parágrafo, linha, frase).
-- **Semantic chunking** — divisão por mudanças de significado, detectadas pela distância entre embeddings de frases adjacentes.
-- **Structure-aware chunking** — divisão por estrutura nativa do documento (markdown, código, HTML).
+   → analisa os dois JUNTOS
+   → não pode pré-computar
+   → mais preciso
+   → mais lento (cada par é uma inferência)
+```
+
+### 3.2 HyDE — Hypothetical Document Embeddings
+
+Técnica de pré-retrieval que melhora alinhamento entre query e documentos.
+
+```
+═══════════════════════════════════════════════════════════════════
+ HyDE — HYPOTHETICAL DOCUMENT EMBEDDINGS
+═══════════════════════════════════════════════════════════════════
+
+[query: "qual o prazo de rescisão contratual?"]
+      ↓
+[LLM gera resposta HIPOTÉTICA]
+      ↓
+   "O prazo de rescisão contratual é geralmente de 30 dias,
+    com aviso prévio por escrito. Em contratos com prazo
+    determinado, a rescisão antecipada pode incorrer em multa."
+      ↓
+[embedding da resposta hipotética]
+      ↓
+[busca no banco vetorial usando ESSE embedding]
+      ↓
+   ↓ a hipótese: a resposta hipotética está mais próxima
+   ↓ dos chunks reais do que a query crua
+      ↓
+[chunks mais relevantes recuperados]
+```
+
+**Quando ajuda:** queries curtas, vagas, ou em forma de pergunta — onde a query crua tem embedding muito diferente dos chunks (que são afirmações).
+
+**Quando atrapalha:** queries técnicas com termos exatos — a "resposta hipotética" gerada pode introduzir vocabulário diferente do que está nos documentos.
 
 ---
 
 ## 4. Arquiteturas modulares e agênticas
 
-### Modular RAG como padrão arquitetural
+### 4.1 Adaptive RAG — Jeong et al. (2024)
 
-A defesa do Modular RAG como padrão é consistente em fontes recentes. Modular RAG reformula o pipeline como componentes estilo LEGO (recuperadores, rankeadores, geradores, validadores, roteadores) que podem ser reconfigurados por tarefa, permitindo manutenibilidade e troca a quente conforme os modelos melhoram.
+Classificador roteia entre estratégias conforme a complexidade da query.
 
-A justificativa prática: desacopla a arquitetura monolítica em componentes que se otimizam independentemente, incluindo pré-processamento de query, recuperadores, rerankers e geradores. Essa arquitetura permite que desenvolvedores substituam ou atualizem módulos específicos com base em necessidades específicas de domínio.
+```
+═══════════════════════════════════════════════════════════════════
+ ADAPTIVE RAG
+═══════════════════════════════════════════════════════════════════
 
-### Adaptive RAG — roteamento por complexidade de query
+[query]
+      ↓
+═══ CLASSIFICADOR (T5-Large pequeno) ═══════════════
+      ↓
+   classifica em 3 categorias:
 
-Proposto por Jeong et al. (2024). Adaptive-RAG treina um classificador T5-Large com rótulos de complexidade derivados automaticamente para rotear entre três estratégias de retrieval, e demonstra que um roteador de complexidade de três classes pode igualar baselines sempre-caros com custo substancialmente menor.
+   ┌─────────┬──────────────────────────────────┐
+   │  A      │  query SIMPLES                   │
+   │         │  (ex: "quanto é 2+2?")          │
+   │         │  → sem retrieval                 │
+   ├─────────┼──────────────────────────────────┤
+   │  B      │  query SINGLE-HOP                │
+   │         │  (ex: "qual o prazo de X?")     │
+   │         │  → 1 retrieval + geração         │
+   ├─────────┼──────────────────────────────────┤
+   │  C      │  query MULTI-HOP                 │
+   │         │  (ex: "compare X com Y e diga    │
+   │         │   por que Z depende de ambos")  │
+   │         │  → retrieval iterativo           │
+   └─────────┴──────────────────────────────────┘
+      ↓
+═══ ROTEAMENTO ═══════════════════════════════════════
+      ↓
+   ┌──────┬───────────────┬─────────────────────────┐
+   ↓      ↓               ↓                         ↓
+ [A]    [B]             [C]                       [outro]
+   ↓      ↓               ↓
+[LLM   [retrieve →     [loop iterativo:
+ direto] reranker →      retrieve → reason →
+         LLM]            retrieve → reason → ...]
+   ↓      ↓               ↓
+   └──────┴───────────────┘
+                ↓
+            [resposta]
+```
 
-A ideia central: Adaptive RAG projetado para otimizar o uso de LLMs com retrieval augmentado selecionando dinamicamente a melhor abordagem para lidar com queries com base em sua complexidade. Diferentemente de métodos existentes que ou tratam queries simples com overhead computacional desnecessário ou falham em queries complexas multi-step, este framework emprega um classificador (um LLM menor) para determinar a complexidade da query e adaptar a estratégia de retrieval adequadamente.
+**Resultado da literatura:** classificador pequeno (T5-Large, 770M params) iguala baselines sempre-caros (que sempre fazem multi-hop) com custo muito menor — porque a maioria das queries reais é A ou B.
 
-### Self-RAG
+---
 
-Asai et al. (2023). O LLM é equipado para julgar a qualidade do próprio retrieval e decidir quando re-recuperar. Self-RAG: um padrão modular de destaque introduzido em 2024 e amplamente adotado em 2025. Em Self-RAG, o próprio LLM é equipado para "julgar" sua performance. Ele gera instruções de retrieval, critica suas próprias saídas e as passagens recuperadas, e decide se precisa recuperar mais informação ou produzir uma resposta final.
+### 4.2 Self-RAG — Asai et al. (2024)
 
-### Corrective RAG (CRAG)
+O próprio LLM decide quando recuperar e quando parar, usando "reflection tokens" especiais.
 
-Proposto em 2024. CRAG é direcionado a auto-corrigir resultados do recuperador e melhorar a utilização de documentos para geração. Um avaliador de retrieval leve é introduzido para avaliar a qualidade geral dos documentos recuperados para uma dada query. O avaliador de retrieval quantifica um grau de confiança, permitindo diferentes ações de recuperação de conhecimento — Correct, Incorrect, Ambiguous — com base na avaliação. Para casos Incorrect e Ambiguous, buscas web em larga escala são integradas estrategicamente para resolver limitações em corpora estáticos e limitados.
+```
+═══════════════════════════════════════════════════════════════════
+ SELF-RAG
+═══════════════════════════════════════════════════════════════════
 
-A relação entre Self-RAG e CRAG, segundo a literatura: os dois são complementares, não alternativos. Self-RAG pode decidir se deve recuperar; CRAG pode avaliar e corrigir o que foi recuperado. Em um sistema de produção podem ser combinados.
+[query]
+      ↓
+═══ LOOP DE GERAÇÃO COM REFLEXÃO ═════════════════════
+      ↓
+┌─────────────────────────────────────────────────────┐
+│                                                       │
+│  [LLM gera o próximo trecho da resposta]             │
+│           ↓                                            │
+│  [LLM gera um REFLECTION TOKEN especial]             │
+│           ↓                                            │
+│      ┌────┴────────────────────────┐                  │
+│      ↓                              ↓                  │
+│  [Retrieve]               [No Retrieve]               │
+│   → busca chunks            → continua gerando        │
+│      ↓                              ↓                  │
+│  [chunks chegam]                    │                  │
+│      ↓                              │                  │
+│  [LLM continua gerando]             │                  │
+│  com os chunks                      │                  │
+│      ↓                              │                  │
+│  [LLM gera REFLECTION TOKEN: IsRel] │                  │
+│           ↓                          │                  │
+│   chunks relevantes?                │                  │
+│      ↓                              │                  │
+│  [LLM gera REFLECTION TOKEN: IsSup] │                  │
+│           ↓                          │                  │
+│   resposta suportada?               │                  │
+│      ↓                              │                  │
+│  [LLM gera REFLECTION TOKEN: IsUse] │                  │
+│           ↓                          │                  │
+│   resposta útil?                    │                  │
+│      ↓                              ↓                  │
+│      └────────────┬─────────────────┘                  │
+│                   ↓                                     │
+│            terminou?                                    │
+│           ↙        ↘                                    │
+│         sim         não → volta ao início do loop      │
+│           ↓                                              │
+└───────────┼──────────────────────────────────────────────┘
+            ↓
+       [resposta final]
+```
 
-Limitações documentadas do CRAG e Self-RAG:
+**Reflection tokens são tokens especiais aprendidos durante fine-tuning:**
 
-- Calibração de limiar de score: os limiares precisam de ajuste por base de conhecimento. Confiabilidade da busca web: resultados de busca variam em qualidade. Aumento de custo: scoring (4 chamadas de LLM por query) mais possível busca web mais refinamento adiciona overhead significativo de tokens em comparação com retrieval básico.
-- O mecanismo de auto-reflexão pode, por exemplo, às vezes levar a saídas que não são realmente sustentadas pelos dados (o sistema essencialmente "pensando demais").
+- `[Retrieve]` / `[No Retrieve]` — decide se busca.
+- `[IsRel]` — chunk recuperado é relevante? (yes/no)
+- `[IsSup]` — a resposta está suportada pelo chunk? (fully/partial/no)
+- `[IsUse]` — a resposta é útil? (1-5)
 
-### Agentic RAG
+**Custo:** o LLM faz várias chamadas por query, gerando tokens normais e reflexivos. Cada decisão é uma inferência.
 
-A fronteira atual. Abordagens híbridas-modulares: RAG em sua forma mais flexível combina roteamento, looping, reflexão e orquestração modular. As tarefas são divididas entre componentes especializados, coordenados por um agente que pode reconfigurar dinamicamente o workflow de acordo com a query ou o contexto de raciocínio.
+---
 
-A comparação cognitiva proposta na literatura é interessante: apresentamos uma revisão abrangente dos métodos de RAG Agêntico de Raciocínio, categorizando-os em dois sistemas primários: raciocínio predefinido, que segue pipelines modulares fixos para impulsionar o raciocínio, e raciocínio agêntico, onde o modelo autonomamente orquestra interação de ferramentas durante a inferência.
+### 4.3 Corrective RAG (CRAG) — Yan et al. (2024)
 
-### GraphRAG
+Adiciona um avaliador entre o retrieval e a geração. Se o retrieval falha, dispara busca web.
 
-Estrutura o corpus como grafo de entidades e relações. GraphRAG impõe estrutura (entidades, relações, comunidades) sobre corpora não estruturados para suportar travessias locais guiadas por query, e detecção global baseada em comunidades.
+```
+═══════════════════════════════════════════════════════════════════
+ CORRECTIVE RAG (CRAG)
+═══════════════════════════════════════════════════════════════════
 
-Combinações também aparecem: sua forma mais avançada é o Agentic GraphRAG, onde um agente LLM decide dinamicamente se uma query é melhor servida por busca de similaridade vetorial, travessia de grafo de conhecimento, ou uma combinação de ambos, baseado na natureza da query.
+[query]
+      ↓
+[retrieval normal: top-k chunks]
+      ↓
+═══ AVALIADOR DE RETRIEVAL (modelo leve) ═══════════════
+      ↓
+   Para cada chunk:
+   ┌──────────────────────────────────────┐
+   │  modelo classifica:                   │
+   │    Correct    (alta confiança)       │
+   │    Incorrect  (baixa confiança)      │
+   │    Ambiguous  (média confiança)      │
+   └──────────────────────────────────────┘
+      ↓
+   confiança geral = agregação dos scores
+      ↓
+═══ ROTEAMENTO POR CONFIANÇA ═══════════════════════════
+      ↓
+   ┌──────────┬──────────────┬───────────────┐
+   ↓          ↓              ↓               ↓
+[CORRECT]  [AMBIGUOUS]   [INCORRECT]
+   ↓          ↓              ↓
+[refina    [combina:      [descarta retrieval
+ chunks]    chunks         → faz busca WEB
+   ↓        internos +     → reformula query
+   │        busca web]      → recupera da web]
+   ↓          ↓              ↓
+   └──────────┴──────────────┘
+              ↓
+═══ REFINAMENTO ════════════════════════════════════════
+      ↓
+[decomposição em "knowledge strips"]
+      ↓
+[filtra strips relevantes]
+      ↓
+[recompõe contexto enxuto]
+      ↓
+═══ GERAÇÃO ════════════════════════════════════════════
+      ↓
+[LLM gera resposta com contexto refinado]
+      ↓
+[resposta]
+```
 
-A literatura é cuidadosa, no entanto, em apontar o custo de adoção: GraphRAG exige extração de entidades e relações via LLM durante a ingestão, o que é proibitivo em bases extensas.
+**Custo documentado:** 4 chamadas de LLM por query no scoring + possível busca web + refinamento. Significativo, mas inferior ao Self-RAG.
+
+---
+
+### 4.4 Agentic RAG — a fronteira
+
+O LLM atua como agente orquestrador, decidindo dinamicamente que ferramentas usar.
+
+```
+═══════════════════════════════════════════════════════════════════
+ AGENTIC RAG
+═══════════════════════════════════════════════════════════════════
+
+[query complexa: "compare a estratégia de IA da Microsoft em 2023
+ com a da Google em 2024, e diga qual investiu mais"]
+      ↓
+═══ AGENTE LLM (planejamento) ════════════════════════════
+      ↓
+   [LLM analisa a query e cria um PLANO]
+      ↓
+   Plano:
+   1. buscar "estratégia IA Microsoft 2023"
+   2. buscar "estratégia IA Google 2024"
+   3. buscar "investimento IA Microsoft 2023"
+   4. buscar "investimento IA Google 2024"
+   5. comparar e responder
+      ↓
+═══ LOOP DE EXECUÇÃO ═══════════════════════════════════
+      ↓
+┌───────────────────────────────────────────────────────┐
+│                                                         │
+│  [agente escolhe a próxima ação]                       │
+│            ↓                                            │
+│      ┌────┴───────┬──────────────┬────────────┐        │
+│      ↓            ↓              ↓            ↓        │
+│  [retrieve]   [web search]   [calculator]  [outro]    │
+│   na base                                              │
+│      ↓            ↓              ↓            ↓        │
+│      └────────────┴──────────────┴────────────┘        │
+│                ↓                                        │
+│  [resultado da ferramenta]                              │
+│                ↓                                        │
+│  [agente REFLETE sobre o resultado]                    │
+│                ↓                                        │
+│  preciso de mais informação?                           │
+│       ↙              ↘                                  │
+│      sim              não                               │
+│      ↑                ↓                                 │
+│      └─────┐    [agente SINTETIZA]                     │
+│            │          ↓                                 │
+│            │    [resposta final]                       │
+│            │                                            │
+└────────────┘
+```
+
+**Características-chave:**
+
+- **Planejamento** — o agente cria um plano antes de agir.
+- **Tool use** — chama múltiplas ferramentas (retrieval, web search, cálculo, APIs).
+- **Reflexão** — avalia resultados intermediários e replaneja.
+- **Loop dinâmico** — número de passos não é fixo.
+
+**Custo:** cada query pode gerar 5–20 chamadas de LLM. Latência alta. Custo de tokens muito alto.
+
+---
+
+### 4.5 GraphRAG — Microsoft Research (2024)
+
+Estrutura o corpus como grafo de entidades e relações, em vez de chunks isolados.
+
+```
+═══════════════════════════════════════════════════════════════════
+ GRAPHRAG
+═══════════════════════════════════════════════════════════════════
+
+INGESTÃO (pesada)
+─────────────────────────────────────────
+[documentos]
+      ↓
+[chunking]
+      ↓
+[para cada chunk: LLM extrai entidades e relações]
+      ↓
+   exemplo do chunk:
+   "A Microsoft adquiriu o GitHub em 2018 por 7.5 bilhões"
+      ↓
+   entidades:  Microsoft, GitHub, 2018, 7.5 bilhões
+   relações:   (Microsoft) —adquiriu→ (GitHub)
+               (GitHub) —ano→ (2018)
+               (GitHub) —valor→ (7.5 bilhões)
+      ↓
+[grafo de conhecimento agregado]
+      ↓
+[detecção de COMUNIDADES no grafo]
+   (clusters de entidades relacionadas)
+      ↓
+[LLM gera RESUMO de cada comunidade]
+      ↓
+[grafo + resumos de comunidades salvos]
+
+
+CONSULTA
+─────────────────────────────────────────
+[query]
+      ↓
+═══ DOIS MODOS DE QUERY ═══════════════════════════════
+      ↓
+   ┌─────────────┬────────────────────┐
+   ↓             ↓
+[LOCAL]      [GLOBAL]
+ query        query
+ específica   geral
+
+   ↓             ↓
+[encontra     [usa os resumos
+ entidades     de comunidades
+ na query]     para responder
+   ↓           perguntas amplas]
+[navega        ↓
+ pelo grafo]  [agrega resumos
+   ↓           relevantes]
+[chunks
+ conectados   ↓
+ às entidades]
+   ↓           ↓
+   └─────┬─────┘
+         ↓
+   [LLM gera resposta]
+         ↓
+    [resposta]
+```
+
+**Diferença fundamental para RAG vetorial:**
+
+```
+RAG VETORIAL              GRAPHRAG
+─────────────────         ─────────────────
+busca por                 navega por
+similaridade              relações
+   ↓                         ↓
+"trechos parecidos        "entidades conectadas
+ com a query"              por relações relevantes"
+```
+
+**Quando GraphRAG ganha:** queries que envolvem **múltiplos saltos por relações** — "quais empresas foram adquiridas por X que também investem em Y". RAG vetorial não responde isso bem.
+
+**Quando GraphRAG perde:** queries diretas sobre conteúdo de documentos. E o custo de ingestão é proibitivo em bases grandes.
 
 ---
 
@@ -146,17 +808,74 @@ A literatura é cuidadosa, no entanto, em apontar o custo de adoção: GraphRAG 
 
 O posicionamento do BuscaAI dentro do estado da arte fica claro à luz da literatura:
 
-**Padrão arquitetural adotado** — Modular RAG, alinhado com a recomendação dominante de Gao et al. (2024) e com a consolidação observada em 2024–2026.
+**Padrão arquitetural adotado** — Modular RAG, alinhado com Gao et al. (2024) e com a consolidação observada em 2024–2026.
 
 **Estratégia de retrieval** — Hybrid Search (denso + esparso + RRF), alinhada com a literatura unânime que aponta busca híbrida como linha de base superior.
 
 **Reranking** — incorporado como etapa pós-retrieval opcional, alinhado com os achados que apontam o reranker como o componente isolado de maior ganho.
 
-**Pré-filtragem léxica** — etapa antes da busca híbrida, mecanismo coerente com a função de "porteiro lexical" que BM25 desempenha bem em escala.
+**Pré-filtragem léxica** — etapa antes da busca híbrida, coerente com a função de "porteiro lexical" que BM25 desempenha bem em escala.
 
 **Adaptive routing leve** — uso de arestas condicionais no LangGraph para decisões de fluxo, capturando o espírito do Adaptive RAG sem o custo de um classificador treinado.
 
-**O que ficou fora, com justificativa** — Self-RAG, Corrective RAG e GraphRAG, todos exigem LLM no laço de retrieval ou na ingestão, com custo de tokens incompatível com o caso de uso de bases gigantescas e genéricas. A literatura confirma esses custos como barreiras reais à adoção em produção.
+**O que ficou fora, com justificativa** — Self-RAG, CRAG e GraphRAG, todos exigem LLM no laço de retrieval ou na ingestão, com custo de tokens incompatível com o caso de uso de bases gigantescas e genéricas. A literatura confirma esses custos como barreiras reais à adoção em produção.
+
+---
+
+## Diagrama final: o pipeline do BuscaAI
+
+```
+═══════════════════════════════════════════════════════════════════
+ BUSCAAI — ARQUITETURA CONSOLIDADA
+═══════════════════════════════════════════════════════════════════
+
+INGESTÃO (offline, assíncrona)
+─────────────────────────────────────────
+[fontes: PDF, SQL, S3, Notion, ...]
+      ↓
+[chunking adaptativo por tipo]
+      ↓
+[metadados naturais extraídos]
+      ↓
+   ┌──┴──┐
+   ↓     ↓
+[embedding denso]    [embedding esparso (SPLADE)]
+   ↓     ↓
+   └──┬──┘
+      ↓
+[indexa no Qdrant + índice invertido]
+
+
+CONSULTA (online)
+─────────────────────────────────────────
+[query]
+      ↓
+[cache hit?] ─sim→ [retorna do cache]
+      ↓ não
+═══ PRÉ-FILTRAGEM LÉXICA ════════════════════
+[BM25 sobre índice invertido]
+[milhões → dezenas de milhares]
+      ↓
+═══ FILTRO DE METADADOS (opcional) ═══════════
+[Filtered HNSW]
+      ↓
+═══ BUSCA HÍBRIDA ═══════════════════════════
+[denso] + [esparso] → [RRF]
+[→ ~100 candidatos]
+      ↓
+═══ RERANKER (condicional) ══════════════════
+[cross-encoder]
+[→ top 5]
+      ↓
+═══ GERAÇÃO (se /chat) ═══════════════════════
+[prompt: query + histórico + chunks]
+      ↓
+[LLM gera resposta com streaming]
+      ↓
+[salva no cache]
+      ↓
+[resposta + fontes para o usuário]
+```
 
 ---
 
@@ -171,4 +890,7 @@ O posicionamento do BuscaAI dentro do estado da arte fica claro à luz da litera
 - **Edge, D., et al.** (2024). From Local to Global: A Graph RAG Approach to Query-Focused Summarization. Microsoft Research.
 - **Sharma, C.** (2025). Retrieval-Augmented Generation: A Comprehensive Survey of Architectures, Enhancements, and Robustness Frontiers. arXiv:2506.00054.
 - **Ranjan, R.** (2024). A Comprehensive Survey of Retrieval-Augmented Generation (RAG): Evolution, Current Landscape and Future Directions. arXiv:2410.12837.
+- **Sarthi, P., et al.** (2024). RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval. ICLR.
+- **Gao, L., et al.** (2022). Precise Zero-Shot Dense Retrieval without Relevance Labels (HyDE). arXiv:2212.10496.
 - **Robertson, S., Zaragoza, H.** (2009). The probabilistic relevance framework: BM25 and beyond. Foundations and Trends in IR.
+- **Cormack, G. V., Clarke, C. L. A., Buettcher, S.** (2009). Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods. SIGIR.

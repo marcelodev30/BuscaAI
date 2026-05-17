@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[Início Rápido](#-início-rápido) · [Documentação](#-documentação) · [Arquitetura](#-arquitetura) · [API](#-api) · [CLI](#-cli) · [Contribuição](#-contribuição)
+[Início Rápido](#-início-rápido) · [Formas de Interação](#-formas-de-interação) · [Arquitetura](#-arquitetura) · [API](#-api) · [CLI](#-cli) · [Contribuição](#-contribuição)
 
 </div>
 
@@ -31,14 +31,14 @@ rag_settings.py  →  rag up  →  rag ingest  →  rag search "sua query"
 
 ## Por que BuscaAI
 
-| Problema | Como o BuscaAI resolve |
-|---|---|
-| Busca vetorial perde termos exatos | Busca híbrida: denso + esparso + RRF |
-| Bases gigantescas tornam a busca lenta | Pré-filtragem léxica reduz o universo antes da busca vetorial |
-| Resultados relevantes ficam no meio da lista | Reranker cross-encoder reordena os candidatos |
-| Ingestão de milhões de docs trava a API | Processamento assíncrono via Celery com checkpoint e retry |
-| Difícil saber se o RAG está funcionando bem | Avaliação integrada com RAGAS (4 métricas) |
-| Trocar de modelo LLM exige refatoração | Provedores plugáveis via configuração |
+| Problema                                     | Como o BuscaAI resolve                                        |
+| -------------------------------------------- | ------------------------------------------------------------- |
+| Busca vetorial perde termos exatos           | Busca híbrida: denso + esparso + RRF                          |
+| Bases gigantescas tornam a busca lenta       | Pré-filtragem léxica reduz o universo antes da busca vetorial |
+| Resultados relevantes ficam no meio da lista | Reranker cross-encoder reordena os candidatos                 |
+| Ingestão de milhões de docs trava a API      | Processamento assíncrono via Celery com checkpoint e retry    |
+| Difícil saber se o RAG está funcionando bem  | Avaliação integrada com RAGAS (4 métricas)                    |
+| Trocar de modelo LLM exige refatoração       | Provedores plugáveis via configuração                         |
 
 ---
 
@@ -48,12 +48,12 @@ rag_settings.py  →  rag up  →  rag ingest  →  rag search "sua query"
 - **Pré-filtragem léxica** — índice invertido reduz o universo antes da busca vetorial
 - **Modular RAG** — pipeline como grafo LangGraph com roteamento condicional por tipo de query
 - **Ingestão assíncrona** — Celery + Redis com checkpoint, retry e status em tempo real
-- **Multi-source** — PDF, CSV, TXT, Markdown, código, PostgreSQL, MySQL, S3, Notion
-- **LLM plugável** — OpenAI, Anthropic, Groq, Ollama (configurável por etapa do pipeline)
+- **Multi-source** — PDF, CSV, TXT, Markdown, PostgreSQL, MySQL
+- **LLM plugável** — OpenAI, Anthropic, Groq, Gemin, Ollama (configurável por etapa do pipeline)
 - **Chat com histórico** — contexto de conversa com reformulação de query e streaming
 - **Avaliação RAGAS** — benchmark inline comparando estratégias de busca
 - **Backup incremental** — automatizado com checkpoint diário e restauração por data
-- **API REST + CLI** — acesso por HTTP ou linha de comando
+- **Três formas de interação** — Frontend web, API REST e CLI
 - **Observabilidade** — logs estruturados, métricas e alertas configuráveis
 
 ---
@@ -129,6 +129,141 @@ curl -X POST http://localhost:8000/chat \
 
 ---
 
+## Formas de Interação
+
+O BuscaAI oferece três formas de interação, cada uma voltada para um perfil e contexto diferente:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        FRONTEND                             │
+│                                                             │
+│  Chatbot web com interface visual                           │
+│  Streaming de tokens · Histórico visível · Fontes citadas   │               
+│  Acesso: http://localhost:3000                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                        API REST                             │
+│                                                             │
+│  POST /search · POST /chat · POST /ingest · ...             │
+│  Controle total · Qualquer linguagem                        │
+│  Para: desenvolvedor integrando o BuscaAI em outra app      │
+│  Acesso: http://localhost:8000                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                          CLI                                │
+│                                                             │
+│  OPERAÇÃO                    TESTE E PESQUISA               │
+│  rag ingest                  rag search "query"             │
+│  rag backup                  rag chat  (sessão interativa)  │
+│  rag status                                                 │
+│  rag benchmark               Para: dev testando o sistema   │
+│                                                             │                             
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Frontend — chatbot web
+
+Interface visual completa para o usuário final. histórico de conversa visível e exibição das fontes utilizadas. É o protótipo de validação do framework — o ambiente onde as métricas RAGAS são coletadas com usuários reais.
+
+```bash
+# sobe o frontend junto com o restante do ambiente
+rag up
+# acesse http://localhost:3000
+```
+
+### API REST 
+
+Para desenvolvedores que precisam incorporar o BuscaAI em outra aplicação. Toda a funcionalidade está disponível via HTTP — ingestão, busca, chat com streaming, avaliação.
+
+```bash
+# busca retornando chunks crus
+curl -X POST http://localhost:8000/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "prazo de rescisão"}'
+
+# chat com geração de resposta
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "prazo de rescisão", "stream": false}'
+```
+
+### CLI — terminal para desenvolvedores
+
+Dois modos de uso:
+
+**Operação do sistema** — ingerir dados, fazer backup, monitorar status. São comandos que um desenvolvedor roda para administrar o framework.
+
+**Teste e pesquisa** — `rag search` retorna os chunks recuperados sem geração de resposta (útil para debugar o retrieval). `rag chat` abre uma sessão interativa no próprio terminal, sem streaming, mantendo o histórico durante a sessão.
+
+```bash
+# modo busca — retorna chunks, sem LLM
+rag search "prazo de rescisão contratual"
+```
+
+```
+Resultados para: "prazo de rescisão contratual"
+Estratégia: hybrid | Candidatos pré-filtrados: 48.231 | Reranker: ativo
+────────────────────────────────────────────────────────────────────────
+
+[1] score: 0.97 | contrato.pdf · página 3
+    "O contrato pode ser rescindido em 30 dias mediante
+     aviso prévio por escrito..."
+
+[2] score: 0.89 | contrato.pdf · página 4
+    "O aviso prévio deve ser entregue por meio físico
+     ou eletrônico com confirmação de recebimento..."
+```
+
+```bash
+# modo chat — sessão interativa com histórico
+rag chat
+```
+
+```
+BuscaAI Chat — digite sua pergunta ou 'sair' para encerrar.
+Estratégia: hybrid | Reranker: ativo | Modelo: gpt-4o-mini
+──────────────────────────────────────────────────────────────
+
+Você: qual o prazo de rescisão contratual?
+
+⠿ buscando...
+
+BuscaAI:
+O prazo de rescisão é de 30 dias mediante aviso prévio por
+escrito, conforme a cláusula 8.2 do contrato.
+
+Fontes:
+  [1] contrato.pdf · pág. 3 · score: 0.97
+  [2] contrato.pdf · pág. 4 · score: 0.89
+
+──────────────────────────────────────────────────────────────
+
+Você: e qual a multa?
+
+⠿ buscando...
+
+BuscaAI:
+A multa por descumprimento do prazo de rescisão é de 10% do
+valor total do contrato, conforme a cláusula 9.1.
+
+Fontes:
+  [1] contrato.pdf · pág. 7 · score: 0.94
+
+──────────────────────────────────────────────────────────────
+
+Você: sair
+
+Encerrando sessão.
+```
+
+O histórico é mantido **dentro da sessão** — a reformulação automática de query garante que "e qual a multa?" encontre os chunks corretos mesmo sendo uma query de acompanhamento. O histórico não persiste entre sessões; para persistência, use a API ou o frontend.
+
+---
+
 ## Arquitetura
 
 O BuscaAI é um **Modular RAG** orquestrado pelo LangGraph. Cada etapa do pipeline é um nó do grafo; as decisões (reranker sim/não, tipo de query, re-busca) são arestas condicionais.
@@ -171,21 +306,21 @@ query
 
 ### Stack tecnológica
 
-| Camada | Tecnologia |
-|---|---|
-| Orquestração | LangGraph |
-| Banco vetorial | Qdrant |
-| Pré-filtragem | BM25 / índice invertido |
-| Fusão de resultados | RRF (Reciprocal Rank Fusion) |
-| Embeddings | OpenAI / Cohere / HuggingFace / FastEmbed (SPLADE) |
-| LLM | OpenAI / Anthropic / Groq / Ollama |
-| API | FastAPI |
-| Fila de tarefas | Celery + Redis |
-| Banco de controle | PostgreSQL |
-| Cache | Redis |
-| Avaliação | RAGAS |
-| CLI | Click |
-| Containers | Docker Compose |
+| Camada              | Tecnologia                                         |
+| ------------------- | -------------------------------------------------- |
+| Orquestração        | LangGraph                                          |
+| Banco vetorial      | Qdrant                                             |
+| Pré-filtragem       | BM25 / índice invertido                            |
+| Fusão de resultados | RRF (Reciprocal Rank Fusion)                       |
+| Embeddings          | OpenAI / Cohere / HuggingFace / FastEmbed (SPLADE) |
+| LLM                 | OpenAI / Anthropic / Groq / Ollama                 |
+| API                 | FastAPI                                            |
+| Fila de tarefas     | Celery + Redis                                     |
+| Banco de controle   | PostgreSQL                                         |
+| Cache               | Redis                                              |
+| Avaliação           | RAGAS                                              |
+| CLI                 | Click                                              |
+| Containers          | Docker Compose                                     |
 
 ---
 
@@ -325,7 +460,7 @@ GET  /ingest/history           Histórico de jobs
 POST /search           Busca e retorna chunks relevantes
 POST /search/batch     Múltiplas queries em uma chamada
 POST /chat             Busca + geração de resposta com LLM
-POST /chat/stream      Mesmo com streaming de tokens (SSE)
+POST /chat/stream      Mesmo com streaming
 ```
 
 ### Documentos
@@ -367,23 +502,33 @@ GET /metrics   Métricas agregadas (latência, cache hit, scores)
 
 ## CLI
 
+A CLI é dividida em dois grupos com propósitos distintos.
+
+### Operação do sistema
+
+Comandos para administrar o framework — ingerir dados, monitorar, fazer backup, gerenciar usuários.
+
 ```bash
 # setup
-rag init                          # inicializa o projeto
-rag up                            # sobe o ambiente (docker-compose)
-
+rag init                                  # inicializa o projeto com templates
+rag up                                    # sobe o ambiente (docker-compose)
 
 # ingestão
-rag ingest --source ./documentos/
-rag ingest --source banco_clientes          # source do settings
+rag ingest --source ./documentos/         # ingere um diretório
+rag ingest --source banco_clientes        # ingere de source do settings
+GET  /ingest/status/{job_id}              # acompanha o job
+POST /ingest/cancel/{job_id}              # cancela se necessário
 
-# busca
-rag search "qual o prazo de rescisão?"
-rag search "qual o prazo?" --filter fonte=contrato.pdf
+# backup
+rag backup run                            # dispara backup imediato
+rag backup restore --data "2024-05-14"    # restaura de uma data
+rag backup history                        # lista backups disponíveis
 
-# chat
-rag chat "qual o prazo de rescisão?"
-rag chat "qual o prazo?" --stream
+# monitoramento
+rag status                                # estado de todos os serviços
+rag logs                                  # logs em tempo real
+rag logs --filter erro                    # filtra só erros
+rag logs --tail 100                       # últimas 100 linhas
 
 # avaliação
 rag benchmark \
@@ -391,22 +536,36 @@ rag benchmark \
   --esperado "contrato.pdf:3" \
   --estrategias bm25,dense,hybrid \
   --ragas
-
-# backup
-rag backup run
-rag backup restore --data "2024-05-14"
-rag backup history
-
-# monitoramento
-rag status                        # estado de todos os serviços
-rag logs                          # logs em tempo real
-rag logs --filter erro            # só erros
-
-# usuários
-rag users list
-rag users create --email dev@empresa.com --role editor
-rag users delete --email dev@empresa.com
 ```
+
+### Teste e pesquisa
+
+Comandos para o desenvolvedor testar o sistema e pesquisar na base sem abrir o browser ou o Postman.
+
+```bash
+# busca — retorna os chunks recuperados, sem geração de resposta
+# útil para debugar o retrieval e avaliar a qualidade da busca
+rag search "qual o prazo de rescisão?"
+rag search "qual o prazo?" --filter fonte=contrato.pdf
+rag search "artigo 482 CLT" --top-k 10
+
+# chat — sessão interativa no terminal
+# mantém histórico durante a sessão, sem streaming
+# reformulação automática de query de acompanhamento
+rag chat
+rag chat --filter fonte=contrato.pdf     # restringe a uma fonte
+rag chat --model groq                    # usa um modelo específico
+```
+
+**Diferença entre `rag search` e `rag chat`:**
+
+|            | `rag search`          | `rag chat`                 |
+| ---------- | --------------------- | -------------------------- |
+| Retorna    | chunks crus com score | resposta gerada pelo LLM   |
+| Usa LLM    | não                   | sim                        |
+| Histórico  | não                   | sim (dentro da sessão)     |
+| Streaming  | não                   | não (resultado completo)   |
+| Uso típico | debugar o retrieval   | testar o pipeline completo |
 
 ---
 
@@ -422,8 +581,8 @@ busca-ai/
 │   │   └── server.py
 │   │
 │   ├── ingestion/                 # pipeline de entrada
-│   │   ├── loaders/               # pdf, csv, sql, s3, notion, ...
-│   │   ├── chunking/              # recursive, semantic, markdown, code
+│   │   ├── loaders/               # pdf, csv, sql ...
+│   │   ├── chunking/              # recursive, semantic, markdown
 │   │   └── graph.py               # grafo LangGraph de ingestão
 │   │
 │   ├── retrieval/                 # pipeline de busca
@@ -524,14 +683,26 @@ print(f"Hybrid Faithfulness: {resultado['resultados']['hybrid']['ragas']['faithf
 
 ```python
 # rag_settings.py
-SOURCES = {
-    "artigos": {
+SOURCES = [
+
+"artigos": {
         "type":  "postgresql",
         "host":  "localhost",
-        "name":  "meu_banco",
-        "query": "SELECT id, titulo, conteudo FROM artigos WHERE publicado = true",
+        "port": "5432"
+        "name":  "mydatabase",
+        "user":  "mydatabaseuser",
+        "password":"mypassword"
+}, 
+
+"dados": {
+        "type":  "mysql",
+        "host":  "localhost",
+        "port": "3306"
+        "name":  "mydatabase",
+        "user":  "mydatabaseuser",
+        "password":"mypassword",
     }
-}
+]
 ```
 
 ```bash
@@ -544,15 +715,15 @@ rag ingest --source artigos
 
 Benchmarks realizados em hardware de referência (8 vCPUs, 32 GB RAM, SSD NVMe):
 
-| Métrica | Valor |
-|---|---|
-| Latência p95 — busca sem reranker | ≤ 500ms |
-| Latência p95 — busca com reranker | ≤ 1.500ms |
-| Latência p95 — primeiro token (/chat stream) | ≤ 1.000ms |
-| Throughput | 50 queries simultâneas |
-| Escala testada | até 50M chunks |
-| Recall@5 (busca híbrida) | ≥ 0.80 |
-| Faithfulness RAGAS | ≥ 0.85 |
+| Métrica                                      | Valor                  |
+| -------------------------------------------- | ---------------------- |
+| Latência p95 — busca sem reranker            | ≤ 500ms                |
+| Latência p95 — busca com reranker            | ≤ 1.500ms              |
+| Latência p95 — primeiro token (/chat stream) | ≤ 1.000ms              |
+| Throughput                                   | 50 queries simultâneas |
+| Escala testada                               | até 50M chunks         |
+| Recall@5 (busca híbrida)                     | ≥ 0.80                 |
+| Faithfulness RAGAS                           | ≥ 0.85                 |
 
 ---
 
@@ -619,19 +790,19 @@ CUSTOM_LOADERS = {
 
 O repositório inclui documentação detalhada em `docs/`:
 
-| Arquivo | Conteúdo |
-|---|---|
-| `01-conceitos-fundamentais.md` | RAG, embeddings, BM25, banco vetorial |
-| `02-estrategias-de-busca.md` | Densa, esparsa, híbrida, HNSW, pré-filtragem |
-| `03-estrategias-de-rag.md` | Modular, Hybrid, Adaptive, Graph RAG |
-| `04-chunking.md` | Estratégias de chunking |
-| `05-langgraph.md` | Grafos de execução, estado, arestas condicionais |
-| `06-decisoes-e-tradeoffs.md` | Decisões de arquitetura com justificativas |
-| `07-arquitetura-do-framework.md` | Visão geral, settings, estrutura |
-| `08-operacao.md` | Ingestão assíncrona, atualização, backup, segurança |
-| `09-avaliacao.md` | RAGAS e métricas de retrieval |
-| `13-revisao-sistematica-literatura.md` | Estado da arte 2024–2026 |
-| `15-requisitos-funcionais-nao-funcionais.md` | Requisitos do sistema |
+| Arquivo                                      | Conteúdo                                            |
+| -------------------------------------------- | --------------------------------------------------- |
+| `01-conceitos-fundamentais.md`               | RAG, embeddings, BM25, banco vetorial               |
+| `02-estrategias-de-busca.md`                 | Densa, esparsa, híbrida, HNSW, pré-filtragem        |
+| `03-estrategias-de-rag.md`                   | Modular, Hybrid, Adaptive, Graph RAG                |
+| `04-chunking.md`                             | Estratégias de chunking                             |
+| `05-langgraph.md`                            | Grafos de execução, estado, arestas condicionais    |
+| `06-decisoes-e-tradeoffs.md`                 | Decisões de arquitetura com justificativas          |
+| `07-arquitetura-do-framework.md`             | Visão geral, settings, estrutura                    |
+| `08-operacao.md`                             | Ingestão assíncrona, atualização, backup, segurança |
+| `09-avaliacao.md`                            | RAGAS e métricas de retrieval                       |
+| `13-revisao-sistematica-literatura.md`       | Estado da arte 2024–2026                            |
+| `15-requisitos-funcionais-nao-funcionais.md` | Requisitos do sistema                               |
 
 ---
 
@@ -659,7 +830,6 @@ Contribuições são bem-vindas. Por favor, siga o processo:
 - [ ] Suporte a GraphRAG como estratégia opcional
 - [ ] Self-RAG e Corrective RAG como modos premium configuráveis
 - [ ] Dashboard web de monitoramento
-- [ ] SDK para JavaScript/TypeScript
 - [ ] Suporte a dados multimodais (imagens, áudio)
 - [ ] Integração com Langfuse para observabilidade avançada
 - [ ] Benchmarks comparativos publicados

@@ -516,8 +516,8 @@ rag up                                    # sobe o ambiente (docker-compose)
 # ingestão
 rag ingest --source ./documentos/         # ingere um diretório
 rag ingest --source banco_clientes        # ingere de source do settings
-GET  /ingest/status/{job_id}              # acompanha o job
-POST /ingest/cancel/{job_id}              # cancela se necessário
+rag ingest status {job_id}                # acompanha o job
+rag ingest cancel {job_id}               # cancela se necessário
 
 # backup
 rag backup run                            # dispara backup imediato
@@ -683,26 +683,26 @@ print(f"Hybrid Faithfulness: {resultado['resultados']['hybrid']['ragas']['faithf
 
 ```python
 # rag_settings.py
-SOURCES = [
-
-"artigos": {
-        "type":  "postgresql",
-        "host":  "localhost",
-        "port": "5432"
-        "name":  "mydatabase",
-        "user":  "mydatabaseuser",
-        "password":"mypassword"
-}, 
-
-"dados": {
-        "type":  "mysql",
-        "host":  "localhost",
-        "port": "3306"
-        "name":  "mydatabase",
-        "user":  "mydatabaseuser",
-        "password":"mypassword",
-    }
-]
+SOURCES = {                       
+    "artigos": {
+        "type":     "postgresql",
+        "host":     os.environ.get("POSTGRES_HOST"),
+        "port":     os.environ.get("POSTGRES_PORT"),         
+        "name":     os.environ.get("POSTGRES_DB"),
+        "user":     os.environ.get("POSTGRES_USER"),
+        "password": os.environ.get("POSTGRES_PASSWORD"),
+        "query":    "SELECT id, titulo, conteudo FROM artigos",
+    },
+    "dados": {
+        "type":     "mysql",
+        "host":     os.environ.get("MYSQL_HOST"),
+        "port":     os.environ.get("MYSQL_PORT"),         
+        "name":     os.environ.get("MYSQL_DB"),
+        "user":     os.environ.get("MYSQL_USER"),
+        "password": os.environ.get("MYSQL_PASSWORD"),
+        "query":    "SELECT id, titulo, descricao FROM produtos",
+    },
+}
 ```
 
 ```bash

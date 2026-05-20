@@ -45,7 +45,6 @@ Embeddings:       OpenAI, Cohere, local (plugável)
 LLM:              OpenAI, Anthropic, Groq, Ollama (plugável)
 API:              FastAPI
 Fila de tarefas:  Celery + Redis
-Banco de controle: PostgreSQL
 Cache:            Redis
 Avaliação:        RAGAS
 CLI:              Click
@@ -127,14 +126,14 @@ SOURCES  = { "banco_clientes": {"type": "postgresql", "query": "SELECT ..."} }
 SCHEDULE = { "banco_clientes": "0 2 * * *" }   # reingestão diária
 
 # ─── Segurança ───────────────────────────────────
-AUTH          = {"secret_key": os.environ.get("SECRET_KEY"), "token_expiry": 3600}
+AUTH          = {"token_expiry": 3600}
 ROLES         = {"admin": [...], "editor": [...], "reader": ["search"]}
 RATE_LIMITING = {"enabled": True, "backend": "redis", "limits": {...}}
 SECURITY      = {"prompt_injection_scan": True, "https_only": True, "cors": {...}}
 
 # ─── Infra e qualidade ───────────────────────────
 CACHE      = {"enabled": True, "backend": "redis", "ttl": 3600}
-BACKUP     = {"qdrant": {...}, "postgres": {...}}
+BACKUP     = {"qdrant": {...}}
 BENCHMARK  = {"ragas": {...}}            # config do RAGAS (ver arquivo 09)
 EVALUATION = {"enabled": True, "log_queries": True,   # monitoramento contínuo
               "latency_tracking": True, "alert_on_low_score": True}
@@ -176,7 +175,7 @@ busca-ai/
 │   │   └── server.py
 │   │
 │   ├── ingestion/                  ← pipeline de entrada
-│   │   ├── loaders/                ← pdf, csv, sql, s3, notion...
+│   │   ├── loaders/                ← pdf, csv, sql
 │   │   ├── chunking/               ← recursive, semantic, markdown, code
 │   │   └── graph.py                ← grafo LangGraph de ingestão
 │   │
@@ -193,9 +192,8 @@ busca-ai/
 │   │
 │   ├── sources/                    ← conectores de origem de dados
 │   │   ├── postgresql.py
-│   │   ├── mysql.py
-│   │   ├── s3.py
-│   │   └── notion.py
+│   │   └── mysql.py
+│   │  
 │   │
 │   ├── scheduler/                  ← ingestão agendada
 │   ├── cache/                      ← cache de queries (redis, memória)
@@ -315,7 +313,6 @@ services:
   worker:    # os workers Celery que processam ingestões
   qdrant:    # o banco vetorial
   redis:     # fila de tarefas + cache
-  postgres:  # banco de controle (documentos, jobs, logs)
 ```
 
 ```bash

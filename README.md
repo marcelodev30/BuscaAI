@@ -332,92 +332,418 @@ Toda a configuração fica em um único arquivo `rag_settings.py`, inspirado no 
 # rag_settings.py
 import os
 
-# ─── Chaves de API ──────────────────────────────
+# ════════════════════════════════════════════════════════════
+# CHAVES DE API — sempre via variável de ambiente
+# ════════════════════════════════════════════════════════════
+
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+GOOGLE_API_KEY    = os.environ.get("GOOGLE_API_KEY")
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY")
 COHERE_API_KEY    = os.environ.get("COHERE_API_KEY")
+VOYAGE_API_KEY    = os.environ.get("VOYAGE_API_KEY")
 
-# ─── Banco vetorial ─────────────────────────────
+# ════════════════════════════════════════════════════════════
+# BANCO VETORIAL
+# ════════════════════════════════════════════════════════════
+#
+# backend: qdrant | pgvector | chroma | pinecone
+#
+#   qdrant   → padrão, melhor para produção, suporta híbrido nativo
+#   pgvector → use se já tem Postgres e a base é pequena (<10M chunks)
+#   chroma   → use para POC e desenvolvimento local (embedded)
+#   pinecone → use se não quer gerenciar infra (cloud gerenciado)
+
 VECTOR_STORE = {
     "backend": "qdrant",
-    "host": "localhost",
-    "port": 6333,
+    "host":    os.environ.get("QDRANT_HOST", "localhost"),
+    "port":    int(os.environ.get("QDRANT_PORT", 6333)),
+    "collection": "buscaai",
+
+    # Configurações de performance
+    "hnsw_m":           16,     # conexões por nó no grafo HNSW
+                                # maior = mais qualidade, mais RAM
+    "hnsw_ef":          128,    # profundidade de busca
+                                # maior = mais preciso, mais lento
+    "quantization":     False,  # True economiza RAM (~4x), perde ~5% qualidade
+    "on_disk":          False,  # True para bases muito grandes (troca RAM por disco)
 }
 
-# ─── Embeddings ─────────────────────────────────
+# ════════════════════════════════════════════════════════════
+# EMBEDDINGS
+# ════════════════════════════════════════════════════════════
+#
+# Embedding denso — captura significado semântico
+#   provider: openai | cohere | voyage | local
+#
+#   openai / text-embedding-3-small  → $0.02/1M tokens, 1536 dim, padrão
+#   openai / text-embedding-3-large  → $0.13/1M tokens, 3072 dim, mais preciso
+#   cohere / embed-multilingual-v3   → $0.10/1M tokens, multilíngue forte
+#   voyage / voyage-4-lite           → $0.02/1M tokens, contexto 32K
+#   local  / BAAI/bge-m3             → gratuito, ~2GB RAM, top open-source
+#   local  / all-MiniLM-L6-v2        → gratuito, ~80MB, bom para POC
+#
+# Embedding esparso — captura termos exatos (BM25 neural)
+#   splade   → melhor qualidade, requer FastEmbed
+#   bm25     → fallback simples, zero dependência extra
+
 EMBEDDINGS = {
-    "dense":  {"provider": "openai", "model": "text-embedding-3-small"},
-    "sparse": {"model": "splade"},
-}
-
-# ─── Chunking ───────────────────────────────────
-CHUNKING = {
-    "strategy":   "recursive",   # recursive | semantic | markdown | code
-    "chunk_size": 512,
-    "overlap":    50,
-}
-
-# ─── Retrieval ──────────────────────────────────
-RETRIEVAL = {
-    "strategy":     "hybrid",    # bm25 | dense | hybrid
-    "top_k":        50,
-    "reranker":     True,
-    "reranker_model": "cohere",
-    "final_top_k":  5,
-}
-
-# ─── LLMs ───────────────────────────────────────
-LLM = {
-    "default": "openai",
-    "providers": {
-        "openai":    {"model": "gpt-4o-mini",          "temperature": 0.0},
-        "anthropic": {"model": "claude-haiku-4-5",     "temperature": 0.0},
-        "groq":      {"model": "llama-3.1-8b-instant", "temperature": 0.0},
-        "ollama":    {"host": "localhost", "port": 11434, "model": "llama3.2"},
-    }
-}
-
-# ─── Chat ───────────────────────────────────────
-CHAT = {
-    "provider":      "openai",
-    "system_prompt": "Responda apenas com base nos documentos fornecidos.",
-    "historico_max": 10,
-    "stream":        False,
-}
-
-# ─── Pré-filtragem ──────────────────────────────
-PRE_FILTERING = {
-    "enabled":  True,
-    "strategy": "bm25",
-    "top_n":    50000,
-}
-
-# ─── Fontes de dados ────────────────────────────
-SOURCES = {
-    "banco_clientes": {
-        "type":  "postgresql",
-        "query": "SELECT id, titulo, conteudo FROM artigos",
+    "dense": {
+        "provider":  "openai",
+        "model":     "text-embedding-3-small",
+        "dimension": 1536,
+        "batch_size": 100,      # chunks por chamada de API
+    },
+    "sparse": {
+        "model":     "splade",  # splade | bm25
     },
 }
 
-# ─── Autenticação ───────────────────────────────
-AUTH = {
-    "secret_key":     os.environ.get("SECRET_KEY"),
-    "token_expiry":   3600,
-    "refresh_expiry": 604800,
+# ════════════════════════════════════════════════════════════
+# CHUNKING
+# ════════════════════════════════════════════════════════════
+#
+# strategy: recursive | semantic | markdown | code | auto
+#
+#   recursive  → padrão, divide por parágrafo > frase > palavra
+#   semantic   → divide por mudança de significado (mais caro)
+#   markdown   → respeita cabeçalhos #, ## e listas
+#   code       → respeita funções, classes, imports
+#   auto       → detecta o tipo do arquivo e aplica a estratégia certa
+
+CHUNKING = {
+    "strategy":   "auto",       # recomendado: auto para bases mistas
+    "chunk_size": 512,          # tokens por chunk
+    "overlap":    50,           # tokens de sobreposição entre chunks
+                                # overlap alto = melhor contexto nas bordas,
+                                # mais chunks redundantes
+
+    # Sobrescreve a estratégia por tipo de arquivo
+    "per_type": {
+        "pdf":      "recursive",
+        "markdown": "markdown",
+        "code":     "code",
+        "csv":      "recursive",
+    },
 }
 
-# ─── Cache ──────────────────────────────────────
-CACHE = {"enabled": True, "backend": "redis", "ttl": 3600}
+# ════════════════════════════════════════════════════════════
+# PRÉ-FILTRAGEM LÉXICA
+# ════════════════════════════════════════════════════════════
+#
+# Reduz o universo de busca antes da etapa vetorial.
+# Evita buscar em 10M chunks quando só 50k são candidatos válidos.
+#
+# strategy: bm25 | elasticsearch | opensearch | meilisearch | disabled
+#
+#   bm25          → índice próprio do BuscaAI, zero dependência extra
+#   elasticsearch → use se já tem ES rodando na empresa
+#   opensearch    → use para AWS ou licença Apache 2.0 obrigatória
+#   meilisearch   → use para hardware fraco ou base até ~10M chunks
+#   disabled      → desliga a pré-filtragem (não recomendado em escala)
 
-# ─── Backup ─────────────────────────────────────
+PRE_FILTERING = {
+    "enabled":  True,
+    "strategy": "bm25",
+    "top_n":    50000,          # candidatos que passam para a busca vetorial
+    "language": "pt",           # pt | en | multi
+                                # afeta stopwords e tokenização
+}
+
+# ════════════════════════════════════════════════════════════
+# RETRIEVAL
+# ════════════════════════════════════════════════════════════
+#
+# strategy: bm25 | dense | hybrid
+#
+#   bm25    → só busca lexical, rápido, perde queries semânticas
+#   dense   → só busca semântica, perde termos exatos (IDs, códigos)
+#   hybrid  → os dois + RRF, melhor resultado geral ← recomendado
+
+RETRIEVAL = {
+    "strategy":   "hybrid",
+    "top_k":      50,           # candidatos que passam para o reranker
+                                # ou para o LLM se não tiver reranker
+
+    # Reranker — reordena os top_k candidatos
+    # model: cohere | voyage | cross-encoder | disabled
+    #
+    #   cohere         → $2/1k buscas, qualidade alta
+    #   voyage         → primeiros 200M tokens grátis, melhor em benchmarks
+    #   cross-encoder  → local, gratuito, ~100ms CPU ou ~10ms GPU
+    #   disabled       → sem reranker
+    "reranker":       True,
+    "reranker_model": "cross-encoder",  # local é mais barato em volume alto
+    "final_top_k":    5,                # chunks que chegam ao LLM
+
+    # RRF — fusão entre busca densa e esparsa
+    "rrf_k": 60,                # constante de fusão, padrão de mercado
+}
+
+# ════════════════════════════════════════════════════════════
+# LLMs
+# ════════════════════════════════════════════════════════════
+#
+# Provedores disponíveis para geração de resposta.
+# O "default" é usado pelo endpoint /chat quando não especificado.
+#
+# Preços por 1M tokens (input / output) — maio 2026:
+#   openai    gpt-4o-mini        $0.40  / $1.60
+#   openai    gpt-4o             $2.50  / $10.00
+#   anthropic claude-haiku-4-5   $1.00  / $5.00
+#   anthropic claude-sonnet-4-6  $3.00  / $15.00
+#   gemini    gemini-2.5-flash   $0.15  / $0.60   ← mais barato
+#   groq      llama-3.1-8b       $0.05  / $0.08   ← mais rápido
+#   cohere    command-r7b        $0.037 / $0.15   ← ultra barato
+#   ollama    qualquer modelo    $0     (local)
+
+LLM = {
+    "default": "openai",
+
+    "providers": {
+        "openai": {
+            "model":       "gpt-4o-mini",
+            "temperature": 0.0,
+            "max_tokens":  1000,
+        },
+        "anthropic": {
+            "model":       "claude-haiku-4-5",
+            "temperature": 0.0,
+            "max_tokens":  1000,
+        },
+        "gemini": {
+            "model":       "gemini-2.0-flash",
+            "temperature": 0.0,
+            "max_tokens":  1000,
+        },
+        "groq": {
+            "model":       "llama-3.1-8b-instant",
+            "temperature": 0.0,
+            "max_tokens":  1000,
+        },
+        "cohere": {
+            "model":       "command-r7b",
+            "temperature": 0.0,
+            "max_tokens":  1000,
+        },
+        "ollama": {
+            "host":        os.environ.get("OLLAMA_HOST", "localhost"),
+            "port":        int(os.environ.get("OLLAMA_PORT", 11434)),
+            "model":       "llama3.2",
+            "temperature": 0.0,
+        },
+    },
+
+    # Roteamento por complexidade de query
+    # Economiza 60-80% do custo usando modelos baratos para queries simples
+    "routing": {
+        "enabled": False,       # True para ativar o roteamento
+        "simple":  "groq",      # queries de uma etapa
+        "medium":  "openai",    # queries que precisam de raciocínio
+        "complex": "anthropic", # queries multi-hop ou muito longas
+    },
+}
+
+# ════════════════════════════════════════════════════════════
+# CHAT
+# ════════════════════════════════════════════════════════════
+
+CHAT = {
+    "provider":      "openai",  # qual provider do bloco LLM usar
+    "system_prompt": (
+        "Você é um assistente especializado. "
+        "Responda apenas com base nos documentos fornecidos. "
+        "Se a resposta não estiver nos documentos, diga que não sabe."
+    ),
+    "historico_max": 10,        # número de turnos anteriores enviados ao LLM
+    "stream":        False,     # True para streaming SSE no /chat/stream
+
+    # Reformulação de query de acompanhamento
+    # ex: "e qual a multa?" → "qual a multa por rescisão contratual?"
+    "reformulacao": {
+        "enabled":  True,
+        "provider": "groq",     # usa modelo barato para reformular
+    },
+}
+
+# ════════════════════════════════════════════════════════════
+# FUNCIONALIDADES LLM OPCIONAIS
+# ════════════════════════════════════════════════════════════
+#
+# Cada funcionalidade adiciona uma chamada de LLM por query.
+# Habilite apenas o que agrega valor real para o seu caso.
+
+LLM_FEATURES = {
+    # Query expansion — gera sinônimos antes de buscar
+    # Ajuda quando o vocabulário do usuário difere dos documentos
+    "query_expansion": {
+        "enabled":  False,
+        "provider": "groq",
+    },
+
+    # HyDE — gera resposta hipotética e usa seu embedding para buscar
+    # Ajuda quando as queries são muito curtas ou vagas
+    "hyde": {
+        "enabled":  False,
+        "provider": "groq",
+    },
+
+    # Reranker via LLM — mais caro que cross-encoder, mais preciso
+    "llm_reranker": {
+        "enabled":  False,
+        "provider": "groq",
+    },
+}
+
+# ════════════════════════════════════════════════════════════
+# FONTES DE DADOS
+# ════════════════════════════════════════════════════════════
+#
+# Cada chave é um nome de source que o dev passa para `rag ingest`.
+# Credenciais SEMPRE via variável de ambiente, nunca hardcoded.
+#
+# type: postgresql | mysql | sqlite | csv | json | api
+
+SOURCES = {
+    "artigos": {
+        "type":     "postgresql",
+        "host":     os.environ.get("SOURCE_PG_HOST", "localhost"),
+        "port":     int(os.environ.get("SOURCE_PG_PORT", 5432)),
+        "name":     os.environ.get("SOURCE_PG_DB"),
+        "user":     os.environ.get("SOURCE_PG_USER"),
+        "password": os.environ.get("SOURCE_PG_PASSWORD"),
+        "query":    "SELECT id, titulo, conteudo FROM artigos WHERE publicado = true",
+
+        # Campos usados como metadados de filtragem
+        "metadata_fields": ["id", "titulo"],
+        # Campo principal de texto
+        "text_field": "conteudo",
+    },
+
+    "produtos": {
+        "type":     "mysql",
+        "host":     os.environ.get("SOURCE_MYSQL_HOST", "localhost"),
+        "port":     int(os.environ.get("SOURCE_MYSQL_PORT", 3306)),
+        "name":     os.environ.get("SOURCE_MYSQL_DB"),
+        "user":     os.environ.get("SOURCE_MYSQL_USER"),
+        "password": os.environ.get("SOURCE_MYSQL_PASSWORD"),
+        "query":    "SELECT id, nome, descricao FROM produtos WHERE ativo = 1",
+        "metadata_fields": ["id", "nome"],
+        "text_field": "descricao",
+    },
+}
+
+# Agendamento de reingestão automática (cron syntax)
+SCHEDULE = {
+    "artigos":  "0 2 * * *",    # diariamente às 2h
+    "produtos": "0 3 * * 0",    # toda domingo às 3h
+}
+
+# ════════════════════════════════════════════════════════════
+# AUTENTICAÇÃO
+# ════════════════════════════════════════════════════════════
+
+AUTH = {
+    "secret_key":     os.environ.get("SECRET_KEY"),
+    "token_expiry":   3600,         # access token: 1 hora
+    "refresh_expiry": 604800,       # refresh token: 7 dias
+    "algorithm":      "HS256",
+
+    # Rate limiting por papel
+    "rate_limits": {
+        "reader": {"search": "100/minute", "chat": "50/minute"},
+        "editor": {"search": "200/minute", "chat": "100/minute", "ingest": "10/hour"},
+        "admin":  {"search": "500/minute", "chat": "200/minute", "ingest": "100/hour"},
+    },
+}
+
+# ════════════════════════════════════════════════════════════
+# CACHE
+# ════════════════════════════════════════════════════════════
+#
+# backend: redis | memory | disabled
+#
+#   redis    → produção, persiste entre restarts, compartilhado entre workers
+#   memory   → desenvolvimento, mais rápido, perde ao reiniciar
+#   disabled → sem cache
+
+CACHE = {
+    "enabled": True,
+    "backend": "redis",
+    "host":    os.environ.get("REDIS_HOST", "localhost"),
+    "port":    int(os.environ.get("REDIS_PORT", 6379)),
+    "ttl":     3600,            # segundos até expirar (1 hora)
+    "max_size": 10000,          # máximo de queries cacheadas
+}
+
+# ════════════════════════════════════════════════════════════
+# BACKUP
+# ════════════════════════════════════════════════════════════
+#
+# destination.type: local 
+#
+#   local → salva em disco, bom para desenvolvimento
+#   s3    → produção, durável, exige AWS_ACCESS_KEY_ID no .env
+
 BACKUP = {
     "qdrant": {
-        "enabled":        True,
-        "strategy":       "incremental",
+        "enabled":         True,
+        "strategy":        "incremental",   # incremental | full
         "full_every_days": 7,
-        "destination":    {"type": "s3", "bucket": "meu-backup"},
-    }
+        "schedule":        "0 1 * * *",     # diário às 1h
+        "retention_days":  30,
+        "destination": {
+            "type":   "local",
+            "path":   "/var/backups/buscaai/qdrant",
+            # Para S3, troque por:
+            # "type":   "s3",
+            # "bucket": os.environ.get("BACKUP_S3_BUCKET"),
+            # "prefix": "buscaai/qdrant",
+        },
+    },
+    "postgres": {
+        "enabled":         True,
+        "schedule":        "0 2 * * *",     # diário às 2h
+        "retention_days":  30,
+        "destination": {
+            "type": "local",
+            "path": "/var/backups/buscaai/postgres",
+        },
+    },
+}
+
+# ════════════════════════════════════════════════════════════
+# LIMITES OPERACIONAIS
+# ════════════════════════════════════════════════════════════
+#
+# Protege o sistema contra arquivos gigantes,
+# queries abusivas e jobs que nunca terminam.
+
+LIMITS = {
+    "max_file_size_mb":      100,       # arquivos maiores são rejeitados
+    "max_chunks_per_doc":    10000,     # documentos que geram mais são truncados
+    "max_query_length":      2000,      # chars — queries maiores são truncadas
+    "search_timeout_sec":    30,        # timeout da busca completa
+    "ingest_timeout_sec":    3600,      # timeout de um job de ingestão
+    "max_ingest_retries":    3,         # tentativas antes de marcar como falha
+    "checkpoint_every":      1000,      # salva progresso a cada N chunks
+}
+
+# ════════════════════════════════════════════════════════════
+# OBSERVABILIDADE
+# ════════════════════════════════════════════════════════════
+
+OBSERVABILITY = {
+    "log_level":   "INFO",              # DEBUG | INFO | WARNING | ERROR
+    "log_format":  "json",              # json | text
+    "log_queries": True,                # registra cada query no banco
+
+    # Alertas automáticos
+    "alerts": {
+        "score_minimo":    0.5,         # alerta se score médio cair abaixo disso
+        "latencia_max_ms": 2000,        # alerta se p95 ultrapassar isso
+        "email":           os.environ.get("ALERT_EMAIL"),
+    },
 }
 ```
 

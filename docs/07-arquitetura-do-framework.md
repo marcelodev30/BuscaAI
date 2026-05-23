@@ -58,11 +58,11 @@ Inspirado no `settings.py` do Django: um único arquivo Python onde tudo é conf
 
 Por que Python e não YAML:
 
-| | YAML | Python (settings) |
-|---|---|---|
-| Chaves de API | expostas em texto | via variável de ambiente |
-| Lógica condicional | não tem | tem |
-| Autocompletar na IDE | não | sim |
+|                      | YAML              | Python (settings)        |
+| -------------------- | ----------------- | ------------------------ |
+| Chaves de API        | expostas em texto | via variável de ambiente |
+| Lógica condicional   | não tem           | tem                      |
+| Autocompletar na IDE | não               | sim                      |
 
 Estrutura do `rag_settings.py` (resumida):
 
@@ -176,8 +176,7 @@ busca-ai/
 │   │
 │   ├── ingestion/                  ← pipeline de entrada
 │   │   ├── loaders/                ← pdf, csv, sql
-│   │   ├── chunking/               ← recursive, semantic, markdown, code
-│   │   └── graph.py                ← grafo LangGraph de ingestão
+│   │   ├── chunking/               ← recursive, semantic, markdown
 │   │
 │   ├── retrieval/                  ← pipeline de busca
 │   │   ├── embeddings/             ← openai, cohere, local

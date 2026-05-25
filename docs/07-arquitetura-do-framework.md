@@ -197,7 +197,7 @@ busca-ai/
 │   ├── scheduler/                  ← ingestão agendada
 │   ├── cache/                      ← cache de queries (redis, memória)
 │   ├── backup/                     ← backup incremental + restore
-│   ├── eval/                       ← RAGAS, métricas de retrieval
+│   ├── benchmark/                  ← RAGAS, métricas de retrieval
 │   ├── observability/              ← logs e métricas
 │   └── conf/                       ← carrega e valida o rag_settings.py
 │

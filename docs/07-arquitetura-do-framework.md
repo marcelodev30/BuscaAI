@@ -15,21 +15,7 @@ O desenvolvedor:
   3. consome o sistema via API HTTP ou via CLI
 ```
 
-A ideia-chave: o desenvolvedor **não precisa saber de RAG** para usar. Ele configura e consome. A complexidade fica encapsulada.
-
-```
-rag_settings.py
-      ↓
-┌─────────────────────────────────┐
-│         BUSCA AI                │
-│                                 │
-│  Grafo de Ingestão (LangGraph)  │
-│  Grafo de Busca   (LangGraph)   │
-│  Grafo de Chat    (LangGraph)   │
-└─────────────────────────────────┘
-      ↓
-  Banco vetorial (Qdrant)
-```
+A ideia-chave: o desenvolvedor configura e consome.
 
 ---
 
@@ -37,12 +23,12 @@ rag_settings.py
 
 ```
 Orquestração:     LangGraph
-Banco vetorial:   Qdrant (decisão final pendente — ver trade-offs)
+Banco vetorial:   Qdrant
 Pré-filtro:       BM25 / índice invertido
 Busca:            Híbrida (densa + esparsa + RRF)
-Reranker:         Cohere ou cross-encoder (opcional)
-Embeddings:       OpenAI, Cohere, local (plugável)
-LLM:              OpenAI, Anthropic, Groq, Ollama (plugável)
+Reranker:         Cross-encoder (opcional)
+Embeddings:       OpenAI, Google, local (plugável)
+LLM:              OpenAI, Anthropic, Google, Ollama (plugável)
 API:              FastAPI
 Fila de tarefas:  Celery + Redis
 Cache:            Redis
@@ -54,15 +40,7 @@ CLI:              Click
 
 ## O arquivo de configuração central
 
-Inspirado no `settings.py` do Django: um único arquivo Python onde tudo é configurado. Python puro (não YAML) porque permite usar variáveis de ambiente, tem lógica condicional e dá autocompletar na IDE.
-
-Por que Python e não YAML:
-
-|                      | YAML              | Python (settings)        |
-| -------------------- | ----------------- | ------------------------ |
-| Chaves de API        | expostas em texto | via variável de ambiente |
-| Lógica condicional   | não tem           | tem                      |
-| Autocompletar na IDE | não               | sim                      |
+Inspirado no `settings.py` do Django: um único arquivo Python onde tudo é configurado. 
 
 Estrutura do `rag_settings.py` (resumida):
 
@@ -76,7 +54,7 @@ COHERE_API_KEY    = os.environ.get("COHERE_API_KEY")
 GROQ_API_KEY      = os.environ.get("GROQ_API_KEY")
 
 # ─── Banco vetorial ──────────────────────────────
-VECTOR_STORE = {"backend": "qdrant", "host": "localhost", "port": 6333}
+VECTOR_STORE = {"type": "qdrant", "host": "localhost", "port": 6333}
 
 # ─── Pré-filtragem léxica ────────────────────────
 PRE_FILTERING = {"enabled": True, "strategy": "bm25", "top_n": 50000}
@@ -110,8 +88,10 @@ CHUNKING = {"strategy": "recursive", "chunk_size": 512, "overlap": 50}
 
 # ─── Retrieval ───────────────────────────────────
 RETRIEVAL = {
-    "strategy": "hybrid", "top_k": 50,
-    "reranker": True, "reranker_model": "cohere", "final_top_k": 5
+    "strategy": "hybrid", 
+    "top_k": 50,
+    "reranker": True, 
+    "reranker_model": "cohere", "final_top_k": 5
 }
 
 # ─── Chat ────────────────────────────────────────
@@ -193,7 +173,6 @@ busca-ai/
 │   │   ├── postgresql.py
 │   │   └── mysql.py
 │   │  
-│   │
 │   ├── scheduler/                  ← ingestão agendada
 │   ├── cache/                      ← cache de queries (redis, memória)
 │   ├── backup/                     ← backup incremental + restore
@@ -239,9 +218,8 @@ DOCUMENTOS
 GET    /documents, /documents/{id}
 DELETE /documents/{id}
 
-BUSCA E CHAT
-POST /search, /search/batch
-POST /chat, /chat/stream
+BUSCA
+POST /search
 
 AVALIAÇÃO
 POST /benchmark
@@ -259,16 +237,11 @@ DELETE /admin/backup/{id}
 UTILITÁRIOS
 GET /health, /metrics
 ```
-
-Diferença entre `/search` e `/chat`:
-- `/search` retorna os chunks crus recuperados.
-- `/chat` busca os chunks, passa para a LLM e retorna uma resposta gerada (com as fontes), suportando histórico de conversa e streaming.
-
 ---
 
 ## A CLI
 
-A linha de comando é importante para um framework dev-first — o desenvolvedor não precisa abrir um cliente HTTP para nada. A CLI é, por baixo, apenas um cliente HTTP da própria API (nada é duplicado).
+A linha de comando é importante para um framework dev-first — o desenvolvedor não precisa abrir um cliente HTTP para nada. 
 
 ```bash
 rag init        # cria rag_settings.py, docker-compose.yml, .env
@@ -280,8 +253,6 @@ rag ingest --source banco_clientes
 
 rag search "qual o prazo de rescisão?"
 rag search "qual o prazo?" --filter fonte=contrato.pdf
-
-rag chat "qual o prazo de rescisão?" --stream
 
 rag benchmark --query "prazo de rescisão" \
               --esperado "contrato.pdf:3" \

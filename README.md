@@ -72,47 +72,27 @@ rag_settings.py  →  rag up  →  rag ingest  →  rag search "sua query"
 pip install busca-ai
 ```
 
-### Setup em 4 comandos
+### Setup em 3 comandos
 
 ```bash
 # 1. inicializa o projeto
 rag init
 
-# 2. preenche as chaves de API no .env
-echo "OPENAI_API_KEY=sk-..." >> .env
-
-# 3. sobe o ambiente (Qdrant, Redis, Postgres)
+# 2. sobe o ambiente
 rag up
 
-# 4. ingere seus documentos
+# 3. ingere seus documentos
 rag ingest --source ./meus-documentos/
 ```
 
-### Primeira busca
+### Search via API
 
 ```bash
-rag search "qual o prazo de rescisão contratual?"
-```
-
-```
-[1] score: 0.97 | contrato.pdf · página 3
-    "O contrato pode ser rescindido em 30 dias mediante
-     aviso prévio por escrito..."
-
-[2] score: 0.91 | contrato.pdf · página 4
-    "O aviso prévio deve ser entregue por meio físico
-     ou eletrônico com confirmação de recebimento..."
-```
-
-### Chat via API
-
-```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8000/search \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "qual o prazo de rescisão?",
-    "stream": false
+    "query": "qual o prazo de rescisão?"
   }'
 ```
 
@@ -126,7 +106,6 @@ curl -X POST http://localhost:8000/chat \
   "latencia_ms": 847
 }
 ```
-
 ---
 
 ## Formas de Interação
@@ -138,14 +117,14 @@ O BuscaAI oferece três formas de interação, cada uma voltada para um perfil e
 │                        FRONTEND                             │
 │                                                             │
 │  Chatbot web com interface visual                           │
-│  Streaming de tokens · Histórico visível · Fontes citadas   │               
+│  · Histórico visível · Fontes citadas                       │               
 │  Acesso: http://localhost:3000                              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │                        API REST                             │
 │                                                             │
-│  POST /search · POST /chat · POST /ingest · ...             │
+│  POST /search · POST /search/debug · POST /ingest · ...     │
 │  Controle total · Qualquer linguagem                        │
 │  Para: desenvolvedor integrando o BuscaAI em outra app      │
 │  Acesso: http://localhost:8000                              │
@@ -154,12 +133,11 @@ O BuscaAI oferece três formas de interação, cada uma voltada para um perfil e
 ┌─────────────────────────────────────────────────────────────┐
 │                          CLI                                │
 │                                                             │
-│  OPERAÇÃO                    TESTE E PESQUISA               │
+│  OPERAÇÃO                    PESQUISA E TESTE               │
 │  rag ingest                  rag search "query"             │
-│  rag backup                  rag chat  (sessão interativa)  │
+│  rag backup                  rag search "query" --debug     │ 
 │  rag status                                                 │
-│  rag benchmark               Para: dev testando o sistema   │
-│                                                             │                             
+│  rag benchmark                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -179,29 +157,29 @@ Para desenvolvedores que precisam incorporar o BuscaAI em outra aplicação. Tod
 
 ```bash
 # busca retornando chunks crus
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8000/search/debug \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "prazo de rescisão"}'
 
 # chat com geração de resposta
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8000/search \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query": "prazo de rescisão", "stream": false}'
+  -d '{"query": "prazo de rescisão"}'
 ```
 
-### CLI — terminal para desenvolvedores
+### CLI — terminal
 
 Dois modos de uso:
 
 **Operação do sistema** — ingerir dados, fazer backup, monitorar status. São comandos que um desenvolvedor roda para administrar o framework.
 
-**Teste e pesquisa** — `rag search` retorna os chunks recuperados sem geração de resposta (útil para debugar o retrieval). `rag chat` abre uma sessão interativa no próprio terminal, sem streaming, mantendo o histórico durante a sessão.
+**Teste e pesquisa** — `rag search --debug` retorna os chunks recuperados sem geração de resposta (útil para debugar o retrieval). `rag search` abre uma sessão interativa no próprio terminal, mantendo o histórico durante a sessão.
 
 ```bash
 # modo busca — retorna chunks, sem LLM
-rag search "prazo de rescisão contratual"
+rag search "prazo de rescisão contratual" --debug 
 ```
 
 ```
@@ -219,8 +197,8 @@ Estratégia: hybrid | Candidatos pré-filtrados: 48.231 | Reranker: ativo
 ```
 
 ```bash
-# modo chat — sessão interativa com histórico
-rag chat
+# modo search — sessão interativa com histórico
+rag search
 ```
 
 ```
@@ -273,16 +251,16 @@ O BuscaAI é um **Modular RAG** orquestrado pelo LangGraph. Cada etapa do pipeli
 ```
 fontes de dados
       ↓
-[chunking adaptativo por tipo]
+[chunking]
       ↓
 [metadados naturais extraídos]
-      ↓
-        ┌─────────┴──────────┐
-        ↓                    ↓
-[embedding denso]   [embedding esparso (SPLADE)]
-        ↓                    ↓
-        └─────────┬──────────┘
-                  ↓
+                ↓
+        ┌───────────────────┐
+        ↓                   ↓
+[embedding denso]   [embedding esparso]
+        ↓                   ↓
+        └───────────────────┘
+                ↓
 [Qdrant + índice invertido BM25]
 ```
 
@@ -295,13 +273,11 @@ query
   ↓ não
 [classificar query]
   ↓
-  ├── simples      → [pré-filtro] → [busca híbrida]
-  ├── multi-entidade → [decomposição] → [pré-filtro] → [busca híbrida]
-  └── complexa     → [decomposição] → [loop: busca → verifica → re-busca?]
-                                           ↓
-                                      [reranker?]
-                                           ↓
-                                      [LLM gera resposta]  ← só no /chat
+  ├── Simples  → [pré-filtro] → [busca híbrida] → [LLM gera resposta]
+  ├── MÉDIA    → [pré-filtro] → [busca] → [reranker] → [LLM gera resposta]
+  └── Multi-entidade → [decomposição] → [pré-filtro] → [busca híbrida] → [reranker] → [LLM gera resposta]
+                                       
+                                    
 ```
 
 ### Stack tecnológica
@@ -403,26 +379,22 @@ EMBEDDINGS = {
 # CHUNKING
 # ════════════════════════════════════════════════════════════
 #
-# strategy: recursive | semantic | markdown | code | auto
+# strategy: recursive | semantic | markdown | auto
 #
 #   recursive  → padrão, divide por parágrafo > frase > palavra
 #   semantic   → divide por mudança de significado (mais caro)
 #   markdown   → respeita cabeçalhos #, ## e listas
-#   code       → respeita funções, classes, imports
 #   auto       → detecta o tipo do arquivo e aplica a estratégia certa
 
 CHUNKING = {
     "strategy":   "auto",       # recomendado: auto para bases mistas
     "chunk_size": 512,          # tokens por chunk
-    "overlap":    50,           # tokens de sobreposição entre chunks
-                                # overlap alto = melhor contexto nas bordas,
-                                # mais chunks redundantes
+    "overlap":    50,           # tokens de sobreposição entre chunks, overlap alto = melhor contexto nas bordas, mais chunks redundantes
 
     # Sobrescreve a estratégia por tipo de arquivo
     "per_type": {
         "pdf":      "recursive",
         "markdown": "markdown",
-        "code":     "code",
         "csv":      "recursive",
     },
 }
@@ -447,7 +419,6 @@ PRE_FILTERING = {
     "strategy": "bm25",
     "top_n":    50000,          # candidatos que passam para a busca vetorial
     "language": "pt",           # pt | en | multi
-                                # afeta stopwords e tokenização
 }
 
 # ════════════════════════════════════════════════════════════
@@ -461,23 +432,26 @@ PRE_FILTERING = {
 #   hybrid  → os dois + RRF, melhor resultado geral ← recomendado
 
 RETRIEVAL = {
-    "strategy":   "hybrid",
-    "top_k":      50,           # candidatos que passam para o reranker
-                                # ou para o LLM se não tiver reranker
+    "strategy": "hybrid",
+    "top_k": 50,           # candidatos que passam para o reranker ou para o LLM se não tiver reranker
+    "RRF": True            # RRF — fusão entre busca densa e esparsa                           
+    "rrf_k": 60,           # constante de fusão, padrão de mercado
+}
+# ════════════════════════════════════════════════════════════
+# Reranker — reordena os top_k candidatos
+# ════════════════════════════════════════════════════════════
+#
+# model: cohere | voyage | cross-encoder 
 
-    # Reranker — reordena os top_k candidatos
-    # model: cohere | voyage | cross-encoder | disabled
-    #
-    #   cohere         → $2/1k buscas, qualidade alta
-    #   voyage         → primeiros 200M tokens grátis, melhor em benchmarks
-    #   cross-encoder  → local, gratuito, ~100ms CPU ou ~10ms GPU
-    #   disabled       → sem reranker
-    "reranker":       True,
+#   cohere         → $2/1k buscas, qualidade alta
+#   voyage         → primeiros 200M tokens grátis, melhor em benchmarks
+#   cross-encoder  → local, gratuito, ~100ms CPU ou ~10ms GPU
+#   disabled       → sem reranker
+
+RERANKR={
+    "reranker": True,
     "reranker_model": "cross-encoder",  # local é mais barato em volume alto
-    "final_top_k":    5,                # chunks que chegam ao LLM
-
-    # RRF — fusão entre busca densa e esparsa
-    "rrf_k": 60,                # constante de fusão, padrão de mercado
+    "final_top_k": 5,                # chunks que chegam ao LLM
 }
 
 # ════════════════════════════════════════════════════════════
@@ -549,21 +523,13 @@ LLM = {
 # ════════════════════════════════════════════════════════════
 
 CHAT = {
-    "provider":      "openai",  # qual provider do bloco LLM usar
+    "provider": "openai",  # qual provider do bloco LLM usar
     "system_prompt": (
         "Você é um assistente especializado. "
         "Responda apenas com base nos documentos fornecidos. "
         "Se a resposta não estiver nos documentos, diga que não sabe."
     ),
     "historico_max": 10,        # número de turnos anteriores enviados ao LLM
-    "stream":        False,     # True para streaming SSE no /chat/stream
-
-    # Reformulação de query de acompanhamento
-    # ex: "e qual a multa?" → "qual a multa por rescisão contratual?"
-    "reformulacao": {
-        "enabled":  True,
-        "provider": "groq",     # usa modelo barato para reformular
-    },
 }
 
 # ════════════════════════════════════════════════════════════
@@ -581,11 +547,11 @@ LLM_FEATURES = {
         "provider": "groq",
     },
 
-    # HyDE — gera resposta hipotética e usa seu embedding para buscar
-    # Ajuda quando as queries são muito curtas ou vagas
-    "hyde": {
+    # Reformulação de query de acompanhamento
+    # ex: "e qual a multa?" → "qual a multa por rescisão contratual?"
+    "reformulacao": {
         "enabled":  False,
-        "provider": "groq",
+        "provider": "groq",     # usa modelo barato para reformular
     },
 
     # Reranker via LLM — mais caro que cross-encoder, mais preciso
@@ -605,6 +571,7 @@ LLM_FEATURES = {
 # type: postgresql | mysql | sqlite | csv | json | api
 
 SOURCES = {
+
     "artigos": {
         "type":     "postgresql",
         "host":     os.environ.get("SOURCE_PG_HOST", "localhost"),
@@ -612,12 +579,6 @@ SOURCES = {
         "name":     os.environ.get("SOURCE_PG_DB"),
         "user":     os.environ.get("SOURCE_PG_USER"),
         "password": os.environ.get("SOURCE_PG_PASSWORD"),
-        "query":    "SELECT id, titulo, conteudo FROM artigos WHERE publicado = true",
-
-        # Campos usados como metadados de filtragem
-        "metadata_fields": ["id", "titulo"],
-        # Campo principal de texto
-        "text_field": "conteudo",
     },
 
     "produtos": {
@@ -627,9 +588,6 @@ SOURCES = {
         "name":     os.environ.get("SOURCE_MYSQL_DB"),
         "user":     os.environ.get("SOURCE_MYSQL_USER"),
         "password": os.environ.get("SOURCE_MYSQL_PASSWORD"),
-        "query":    "SELECT id, nome, descricao FROM produtos WHERE ativo = 1",
-        "metadata_fields": ["id", "nome"],
-        "text_field": "descricao",
     },
 }
 
@@ -661,15 +619,11 @@ AUTH = {
 # CACHE
 # ════════════════════════════════════════════════════════════
 #
-# backend: redis | memory | disabled
-#
 #   redis    → produção, persiste entre restarts, compartilhado entre workers
-#   memory   → desenvolvimento, mais rápido, perde ao reiniciar
 #   disabled → sem cache
 
 CACHE = {
     "enabled": True,
-    "backend": "redis",
     "host":    os.environ.get("REDIS_HOST", "localhost"),
     "port":    int(os.environ.get("REDIS_PORT", 6379)),
     "ttl":     3600,            # segundos até expirar (1 hora)
@@ -687,10 +641,10 @@ CACHE = {
 
 BACKUP = {
     "qdrant": {
-        "enabled":         True,
-        "strategy":        "incremental",   # incremental | full
+        "enabled": True,
+        "strategy": "incremental",  # incremental | full
         "full_every_days": 7,
-        "schedule":        "0 1 * * *",     # diário às 1h
+        "schedule": "1",            # diário às 1h
         "retention_days":  30,
         "destination": {
             "type":   "local",
@@ -702,9 +656,9 @@ BACKUP = {
         },
     },
     "postgres": {
-        "enabled":         True,
-        "schedule":        "0 2 * * *",     # diário às 2h
-        "retention_days":  30,
+        "enabled": True,
+        "schedule": "2",     # diário às 2h
+        "retention_days": 30,
         "destination": {
             "type": "local",
             "path": "/var/backups/buscaai/postgres",
@@ -765,13 +719,13 @@ A API expõe os seguintes grupos de endpoints:
 POST /auth/login       Autentica e retorna access + refresh token
 POST /auth/refresh     Renova o access token
 POST /auth/logout      Invalida o token
-POST /auth/register    Cria novo usuário (admin only)
+POST /auth/register    Cria novo usuário 
 ```
 
 ### Ingestão
 
 ```
-POST /ingest                   Ingere da source configurada no settings
+POST /ingest/database          Ingere da source configurada no settings
 POST /ingest/file              Upload e ingestão de arquivo
 POST /ingest/url               Ingere de uma URL
 POST /ingest/text              Ingere texto direto
@@ -780,13 +734,12 @@ POST /ingest/cancel/{job_id}   Cancela job em andamento
 GET  /ingest/history           Histórico de jobs
 ```
 
-### Busca e chat
+### Busca
 
 ```
-POST /search           Busca e retorna chunks relevantes
-POST /search/batch     Múltiplas queries em uma chamada
-POST /chat             Busca + geração de resposta com LLM
-POST /chat/stream      Mesmo com streaming
+POST /search           Busca + geração de resposta com LLM
+POST /search/stream    Mesmo com streaming
+POST /search/debug     Busca e retorna chunks relevantes
 ```
 
 ### Documentos
@@ -820,7 +773,7 @@ DELETE /admin/backup/{id}            Remove backup antigo
 ### Utilitários
 
 ```
-GET /health    Status de todos os serviços
+GET /status    Status de todos os serviços
 GET /metrics   Métricas agregadas (latência, cache hit, scores)
 ```
 
@@ -871,27 +824,16 @@ Comandos para o desenvolvedor testar o sistema e pesquisar na base sem abrir o b
 ```bash
 # busca — retorna os chunks recuperados, sem geração de resposta
 # útil para debugar o retrieval e avaliar a qualidade da busca
-rag search "qual o prazo de rescisão?"
-rag search "qual o prazo?" --filter fonte=contrato.pdf
-rag search "artigo 482 CLT" --top-k 10
+rag search "qual o prazo de rescisão?" --debug 
+rag search "qual o prazo?" --debug --filter fonte=contrato.pdf
+rag search "artigo 482 CLT" --debug --top-k 10
 
 # chat — sessão interativa no terminal
 # mantém histórico durante a sessão, sem streaming
-# reformulação automática de query de acompanhamento
-rag chat
-rag chat --filter fonte=contrato.pdf     # restringe a uma fonte
-rag chat --model groq                    # usa um modelo específico
+rag search 
+rag search --filter fonte=contrato.pdf     # restringe a uma fonte
+rag search --model groq                    # usa um modelo específico
 ```
-
-**Diferença entre `rag search` e `rag chat`:**
-
-|            | `rag search`          | `rag chat`                 |
-| ---------- | --------------------- | -------------------------- |
-| Retorna    | chunks crus com score | resposta gerada pelo LLM   |
-| Usa LLM    | não                   | sim                        |
-| Histórico  | não                   | sim (dentro da sessão)     |
-| Streaming  | não                   | não (resultado completo)   |
-| Uso típico | debugar o retrieval   | testar o pipeline completo |
 
 ---
 
@@ -1016,8 +958,7 @@ SOURCES = {
         "port":     os.environ.get("POSTGRES_PORT"),         
         "name":     os.environ.get("POSTGRES_DB"),
         "user":     os.environ.get("POSTGRES_USER"),
-        "password": os.environ.get("POSTGRES_PASSWORD"),
-        "query":    "SELECT id, titulo, conteudo FROM artigos",
+        "password": os.environ.get("POSTGRES_PASSWORD"),   
     },
     "dados": {
         "type":     "mysql",
@@ -1026,7 +967,6 @@ SOURCES = {
         "name":     os.environ.get("MYSQL_DB"),
         "user":     os.environ.get("MYSQL_USER"),
         "password": os.environ.get("MYSQL_PASSWORD"),
-        "query":    "SELECT id, titulo, descricao FROM produtos",
     },
 }
 ```
@@ -1126,10 +1066,8 @@ O repositório inclui documentação detalhada em `docs/`:
 | `06-decisoes-e-tradeoffs.md`                 | Decisões de arquitetura com justificativas          |
 | `07-arquitetura-do-framework.md`             | Visão geral, settings, estrutura                    |
 | `08-operacao.md`                             | Ingestão assíncrona, atualização, backup, segurança |
-| `09-avaliacao.md`                            | RAGAS e métricas de retrieval                       |
-| `13-revisao-sistematica-literatura.md`       | Estado da arte 2024–2026                            |
-| `15-requisitos-funcionais-nao-funcionais.md` | Requisitos do sistema                               |
-
+| `09-avaliacao.md`                            | RAGAS e métricas de retrieval                       |                      
+               
 ---
 
 ## Contribuição
@@ -1148,17 +1086,6 @@ Contribuições são bem-vindas. Por favor, siga o processo:
 - Novos módulos devem implementar a interface base correspondente
 - Mudanças de comportamento devem ser refletidas na documentação
 - PRs sem testes não serão aceitos
-
----
-
-## Roadmap
-
-- [ ] Suporte a GraphRAG como estratégia opcional
-- [ ] Self-RAG e Corrective RAG como modos premium configuráveis
-- [ ] Dashboard web de monitoramento
-- [ ] Suporte a dados multimodais (imagens, áudio)
-- [ ] Integração com Langfuse para observabilidade avançada
-- [ ] Benchmarks comparativos publicados
 
 ---
 
@@ -1184,6 +1111,6 @@ Se você usar o BuscaAI em sua pesquisa, por favor cite:
 
 <div align="center">
 
-Construído com LangGraph · Qdrant · FastAPI · Celery
+Construído com LangGraph · Qdrant · FastAPI 
 
 </div>

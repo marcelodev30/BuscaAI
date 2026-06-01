@@ -8,30 +8,40 @@ pontos positivos e negativos, e casos de uso indicados.
 
 ## Sumário
 
-- [Pré-Retrieval](#pré-retrieval)
-  - [Query Rewriting](#1-query-rewriting)
-  - [Query Expansion](#2-query-expansion)
-  - [HyDE](#3-hyde--hypothetical-document-embedding)
-  - [Step-Back Prompting](#4-step-back-prompting)
-  - [Query Decomposition](#5-query-decomposition)
-  - [Query Routing](#6-query-routing)
-- [Retrieval](#retrieval)
-  - [BM25 / Busca Lexical](#1-bm25--busca-lexical)
-  - [Busca Densa](#2-busca-densa)
-  - [Busca Híbrida + RRF](#3-busca-híbrida--rrf-recomendado)
-  - [SPLADE / Busca Esparsa Neural](#4-splade--busca-esparsa-neural)
-  - [MMR](#5-mmr--maximal-marginal-relevance)
-  - [Multi-Index Retrieval](#6-multi-index-retrieval)
-- [Pós-Retrieval](#pós-retrieval)
-  - [Reranking — Cross-Encoder](#1-reranking--cross-encoder)
-  - [Reranking — LLM](#2-reranking--llm)
-  - [Context Compression](#3-context-compression)
-  - [Prompt Packing](#4-prompt-packing)
-  - [Knowledge Strips](#5-knowledge-strips-crag)
-  - [Filtro por Score Mínimo](#6-filtro-por-score-mínimo)
-  - [Citation Grounding](#7-citation-grounding)
-- [Tabela comparativa geral](#tabela-comparativa-geral)
-- [Combinações recomendadas](#combinações-recomendadas)
+- [Estratégias de RAG — Pré-Retrieval, Retrieval e Pós-Retrieval](#estratégias-de-rag--pré-retrieval-retrieval-e-pós-retrieval)
+  - [Sumário](#sumário)
+  - [Pré-Retrieval](#pré-retrieval)
+    - [1. Query Rewriting](#1-query-rewriting)
+    - [2. Query Expansion](#2-query-expansion)
+    - [3. HyDE — Hypothetical Document Embedding](#3-hyde--hypothetical-document-embedding)
+    - [4. Step-Back Prompting](#4-step-back-prompting)
+    - [5. Query Decomposition](#5-query-decomposition)
+    - [6. Query Routing](#6-query-routing)
+  - [Retrieval](#retrieval)
+    - [1. BM25 / Busca Lexical](#1-bm25--busca-lexical)
+    - [2. Busca Densa](#2-busca-densa)
+    - [3. Busca Híbrida + RRF ⭐ recomendado](#3-busca-híbrida--rrf--recomendado)
+    - [4. SPLADE / Busca Esparsa Neural](#4-splade--busca-esparsa-neural)
+    - [5. MMR — Maximal Marginal Relevance](#5-mmr--maximal-marginal-relevance)
+    - [6. Multi-Index Retrieval](#6-multi-index-retrieval)
+  - [Pós-Retrieval](#pós-retrieval)
+    - [1. Reranking — Cross-Encoder](#1-reranking--cross-encoder)
+    - [2. Reranking — LLM](#2-reranking--llm)
+    - [3. Context Compression](#3-context-compression)
+    - [4. Prompt Packing](#4-prompt-packing)
+    - [5. Knowledge Strips (CRAG)](#5-knowledge-strips-crag)
+    - [6. Filtro por Score Mínimo](#6-filtro-por-score-mínimo)
+    - [7. Citation Grounding](#7-citation-grounding)
+  - [Tabela comparativa geral](#tabela-comparativa-geral)
+    - [Pré-Retrieval](#pré-retrieval-1)
+    - [Retrieval](#retrieval-1)
+    - [Pós-Retrieval](#pós-retrieval-1)
+  - [Combinações recomendadas](#combinações-recomendadas)
+    - [Pipeline mínimo (POC / desenvolvimento)](#pipeline-mínimo-poc--desenvolvimento)
+    - [Pipeline balanceado (produção padrão)](#pipeline-balanceado-produção-padrão)
+    - [Pipeline máxima qualidade (saúde / jurídico)](#pipeline-máxima-qualidade-saúde--jurídico)
+    - [Pipeline econômico (custo mínimo)](#pipeline-econômico-custo-mínimo)
+    - [Configuração no BuscaAI (rag\_settings.py)](#configuração-no-buscaai-rag_settingspy)
 
 ---
 
@@ -70,11 +80,11 @@ Pergunta: {query}
 Reescrita:
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +300–800ms |
-| Custo por query | ~$0.001 (modelo barato como Groq) |
-| Ganho de qualidade | +15–25% no Recall@5 |
+| Métrica             | Valor                             |
+| ------------------- | --------------------------------- |
+| Latência adicionada | +300–800ms                        |
+| Custo por query     | ~$0.001 (modelo barato como Groq) |
+| Ganho de qualidade  | +15–25% no Recall@5               |
 
 **Pontos positivos:**
 - Resolve queries curtas, ambíguas e dependentes de contexto
@@ -126,11 +136,11 @@ Retorne apenas as variações, uma por linha.
 Query: {query}
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +500ms–1.5s |
-| Custo por query | 3–5× o custo de um retrieval simples |
-| Ganho de qualidade | +10–20% no Recall@5 |
+| Métrica             | Valor                                |
+| ------------------- | ------------------------------------ |
+| Latência adicionada | +500ms–1.5s                          |
+| Custo por query     | 3–5× o custo de um retrieval simples |
+| Ganho de qualidade  | +10–20% no Recall@5                  |
 
 **Pontos positivos:**
 - Ótimo para domínios com vocabulário variado (jurídico, médico)
@@ -173,11 +183,11 @@ busca vetorial com embedding de alta qualidade
 chunks muito mais relevantes que com o embedding da query curta
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +500ms–1s |
-| Custo por query | +1 chamada de LLM (~$0.002–0.01) |
-| Ganho de qualidade | +15–30% em bases com texto denso |
+| Métrica             | Valor                            |
+| ------------------- | -------------------------------- |
+| Latência adicionada | +500ms–1s                        |
+| Custo por query     | +1 chamada de LLM (~$0.002–0.01) |
+| Ganho de qualidade  | +15–30% em bases com texto denso |
 
 **Pontos positivos:**
 - Excelente para queries curtas e vagas
@@ -219,11 +229,11 @@ retrieval para AMBAS as queries em paralelo:
 LLM responde com ambos os contextos disponíveis
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +400–800ms |
-| Custo por query | +2× retrieval + 1 LLM call |
-| Ganho de qualidade | +10–20% em queries muito específicas |
+| Métrica             | Valor                                |
+| ------------------- | ------------------------------------ |
+| Latência adicionada | +400–800ms                           |
+| Custo por query     | +2× retrieval + 1 LLM call           |
+| Ganho de qualidade  | +10–20% em queries muito específicas |
 
 **Pontos positivos:**
 - Ótimo para perguntas com muitos detalhes específicos
@@ -270,11 +280,11 @@ Estratégias de decomposição:
 - **Paralela:** todas as sub-queries executam simultaneamente
 - **Iterativa (Self-Ask):** LLM decide a próxima sub-query baseado na resposta anterior
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +1–3s |
-| Custo por query | N × retrieval + LLMs de síntese |
-| Ganho de qualidade | +30–50% em queries multi-hop |
+| Métrica             | Valor                           |
+| ------------------- | ------------------------------- |
+| Latência adicionada | +1–3s                           |
+| Custo por query     | N × retrieval + LLMs de síntese |
+| Ganho de qualidade  | +30–50% em queries multi-hop    |
 
 **Pontos positivos:**
 - Melhor resultado isolado em queries analíticas e comparativas
@@ -327,11 +337,11 @@ Três implementações possíveis:
    modelo scikit-learn treinado com exemplos de cada categoria
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | <5ms (heurística) a 300ms (LLM) |
-| Custo por query | $0 a $0.001 |
-| Ganho (redução de custo) | 60–80% do custo total |
+| Métrica                  | Valor                           |
+| ------------------------ | ------------------------------- |
+| Latência adicionada      | <5ms (heurística) a 300ms (LLM) |
+| Custo por query          | $0 a $0.001                     |
+| Ganho (redução de custo) | 60–80% do custo total           |
 
 **Pontos positivos:**
 - Reduz custo total drasticamente ao evitar RAG para queries simples
@@ -382,10 +392,10 @@ Score BM25 para o documento d, query q:
     avgdl    = tamanho médio dos documentos
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência | 5–30ms |
-| Custo | $0 (índice próprio) |
+| Métrica   | Valor                                        |
+| --------- | -------------------------------------------- |
+| Latência  | 5–30ms                                       |
+| Custo     | $0 (índice próprio)                          |
 | Qualidade | baseline — pior que híbrida, melhor que nada |
 
 **Pontos positivos:**
@@ -437,10 +447,10 @@ HNSW (Hierarchical Navigable Small World):
 - Busca começa no topo (macro) e desce até o detalhe
 - Trade-off: `hnsw_m` (qualidade × RAM), `hnsw_ef` (precisão × latência)
 
-| Métrica | Valor |
-|---|---|
-| Latência | 20–80ms |
-| Custo | $0.02–0.13 por 1M tokens (embedding) |
+| Métrica   | Valor                                    |
+| --------- | ---------------------------------------- |
+| Latência  | 20–80ms                                  |
+| Custo     | $0.02–0.13 por 1M tokens (embedding)     |
 | Qualidade | +20–30% sobre BM25 em queries semânticas |
 
 **Pontos positivos:**
@@ -489,11 +499,11 @@ Por que RRF é superior a média de scores?
 - Robusto a outliers (um sistema com score altíssimo não domina)
 - Simples e sem hiperparâmetros críticos
 
-| Métrica | Valor |
-|---|---|
-| Latência | 30–120ms |
-| Custo | BM25 ($0) + embedding ($0.02–0.13/1M) |
-| Qualidade | +25–40% sobre BM25 ou densa isolados |
+| Métrica   | Valor                                 |
+| --------- | ------------------------------------- |
+| Latência  | 30–120ms                              |
+| Custo     | BM25 ($0) + embedding ($0.02–0.13/1M) |
+| Qualidade | +25–40% sobre BM25 ou densa isolados  |
 
 **Pontos positivos:**
 - Melhor resultado comprovado em benchmarks de retrieval (Sharma 2025)
@@ -541,11 +551,11 @@ vetor esparso (maioria = 0, poucos valores > 0):
 busca eficiente + cobertura semântica
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência | 20–60ms (com GPU) |
-| Custo | ~$0 (modelo local via FastEmbed, ~500MB) |
-| Qualidade | +15–25% sobre BM25 puro |
+| Métrica   | Valor                                    |
+| --------- | ---------------------------------------- |
+| Latência  | 20–60ms (com GPU)                        |
+| Custo     | ~$0 (modelo local via FastEmbed, ~500MB) |
+| Qualidade | +15–25% sobre BM25 puro                  |
 
 **Pontos positivos:**
 - Melhor que BM25 puro com custo de inferência similar
@@ -587,11 +597,11 @@ Iteração 2: chunk_1 (score 0.88, mas similar ao chunk_3) → penalizado
 Iteração 3: continua até top_k selecionados
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +5–20ms |
-| Custo | ~$0 (cálculo de similaridade entre vetores) |
-| Ganho | +5–15% em Faithfulness quando há redundância |
+| Métrica             | Valor                                        |
+| ------------------- | -------------------------------------------- |
+| Latência adicionada | +5–20ms                                      |
+| Custo               | ~$0 (cálculo de similaridade entre vetores)  |
+| Ganho               | +5–15% em Faithfulness quando há redundância |
 
 **Pontos positivos:**
 - Evita redundância no contexto enviado ao LLM
@@ -635,11 +645,11 @@ RRF funde os rankings dos dois índices
 top-k combinado
 ```
 
-| Métrica | Valor |
-|---|---|
+| Métrica  | Valor                                                            |
+| -------- | ---------------------------------------------------------------- |
 | Latência | N × latência de busca simples (paralelo = similar à busca única) |
-| Custo | N × custo de embedding |
-| Ganho | +20–35% em cobertura e precisão |
+| Custo    | N × custo de embedding                                           |
+| Ganho    | +20–35% em cobertura e precisão                                  |
 
 **Pontos positivos:**
 - Permite especialização por domínio (embeddings, prompts, chunking diferentes)
@@ -694,10 +704,10 @@ Modelos disponíveis:
   Qwen3-Reranker-8B                      → 8GB, GPU obrigatória
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência | 80–300ms (CPU, 30 candidatos) |
-| Custo | $0 (local) a $2/1k buscas (Cohere) |
+| Métrica            | Valor                                     |
+| ------------------ | ----------------------------------------- |
+| Latência           | 80–300ms (CPU, 30 candidatos)             |
+| Custo              | $0 (local) a $2/1k buscas (Cohere)        |
 | Ganho de qualidade | +20–35% — maior ganho isolado do pipeline |
 
 **Pontos positivos:**
@@ -745,11 +755,11 @@ BuscaAI reordena os chunks conforme o ranking
 top final_k vão ao LLM de geração
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência | 500ms–2s |
-| Custo | $0.05–0.50 por query (depende do LLM e número de chunks) |
-| Ganho de qualidade | +25–40% |
+| Métrica            | Valor                                                    |
+| ------------------ | -------------------------------------------------------- |
+| Latência           | 500ms–2s                                                 |
+| Custo              | $0.05–0.50 por query (depende do LLM e número de chunks) |
+| Ganho de qualidade | +25–40%                                                  |
 
 **Pontos positivos:**
 - Máxima precisão — LLM entende nuances que cross-encoder perde
@@ -799,11 +809,11 @@ Implementações possíveis:
 - Cross-encoder por sentença — sem custo de API
 - Filtro por score de similaridade sentença × query — mais simples
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +200–600ms |
-| Custo | +LLM de compressão, mas economiza tokens do LLM final |
-| Ganho de qualidade | +10–20% em Faithfulness |
+| Métrica             | Valor                                                 |
+| ------------------- | ----------------------------------------------------- |
+| Latência adicionada | +200–600ms                                            |
+| Custo               | +LLM de compressão, mas economiza tokens do LLM final |
+| Ganho de qualidade  | +10–20% em Faithfulness                               |
 
 **Pontos positivos:**
 - Reduz custo de tokens do LLM final em 60–80%
@@ -862,11 +872,11 @@ Pergunta: {query}
 Resposta baseada apenas no contexto acima:
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | <5ms |
-| Custo | $0 |
-| Ganho de qualidade | +5–15% |
+| Métrica             | Valor  |
+| ------------------- | ------ |
+| Latência adicionada | <5ms   |
+| Custo               | $0     |
+| Ganho de qualidade  | +5–15% |
 
 **Pontos positivos:**
 - Zero custo e latência mínima
@@ -911,11 +921,11 @@ contexto reconstruído: "A metformina causa náusea."
 LLM gera resposta com contexto ultra-limpo
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | +500ms–2s por chunk |
-| Custo | Alto — 1 LLM call por chunk |
-| Ganho de qualidade | +20–35% em Precision e Faithfulness |
+| Métrica             | Valor                               |
+| ------------------- | ----------------------------------- |
+| Latência adicionada | +500ms–2s por chunk                 |
+| Custo               | Alto — 1 LLM call por chunk         |
+| Ganho de qualidade  | +20–35% em Precision e Faithfulness |
 
 **Pontos positivos:**
 - Máxima precisão no contexto final — elimina todo ruído
@@ -970,11 +980,11 @@ THRESHOLD_BM25_SCORE        = 5.0    # BM25 (escala variável por base)
 THRESHOLD_RERANKER          = 0.50   # cross-encoder (escala 0–1)
 ```
 
-| Métrica | Valor |
-|---|---|
-| Latência adicionada | <1ms |
-| Custo | $0 |
-| Ganho | Redução significativa de alucinações |
+| Métrica             | Valor                                |
+| ------------------- | ------------------------------------ |
+| Latência adicionada | <1ms                                 |
+| Custo               | $0                                   |
+| Ganho               | Redução significativa de alucinações |
 
 **Pontos positivos:**
 - Reduz alucinações drasticamente
@@ -1022,11 +1032,11 @@ LLM responde:
 Pós-processamento verifica se [1] e [2] existem nos chunks fornecidos.
 ```
 
-| Métrica | Valor |
-|---|---|
+| Métrica             | Valor                               |
+| ------------------- | ----------------------------------- |
 | Latência adicionada | +50–200ms (tokens extras de output) |
-| Custo | +tokens de output com as citações |
-| Ganho | +confiança e auditabilidade |
+| Custo               | +tokens de output com as citações   |
+| Ganho               | +confiança e auditabilidade         |
 
 **Pontos positivos:**
 - Auditabilidade total — cada afirmação pode ser verificada
@@ -1051,37 +1061,37 @@ Pós-processamento verifica se [1] e [2] existem nos chunks fornecidos.
 
 ### Pré-Retrieval
 
-| Estratégia | Latência | Custo/query | Ganho qualidade | Complexidade |
-|---|---|---|---|---|
-| Query Rewriting | +300–800ms | ~$0.001 | +15–25% | Baixa |
-| Query Expansion | +500ms–1.5s | +3–5× retrieval | +10–20% | Média |
-| HyDE | +500ms–1s | ~$0.005 | +15–30% | Baixa |
-| Step-Back | +400–800ms | +2× retrieval | +10–20% | Baixa |
-| Query Decomposition | +1–3s | N× retrieval | +30–50% | Alta |
-| Query Routing | <5ms–300ms | $0–$0.001 | −60% custo | Média |
+| Estratégia          | Latência    | Custo/query     | Ganho qualidade | Complexidade |
+| ------------------- | ----------- | --------------- | --------------- | ------------ |
+| Query Rewriting     | +300–800ms  | ~$0.001         | +15–25%         | Baixa        |
+| Query Expansion     | +500ms–1.5s | +3–5× retrieval | +10–20%         | Média        |
+| HyDE                | +500ms–1s   | ~$0.005         | +15–30%         | Baixa        |
+| Step-Back           | +400–800ms  | +2× retrieval   | +10–20%         | Baixa        |
+| Query Decomposition | +1–3s       | N× retrieval    | +30–50%         | Alta         |
+| Query Routing       | <5ms–300ms  | $0–$0.001       | −60% custo      | Média        |
 
 ### Retrieval
 
-| Estratégia | Latência | Custo/query | Qualidade | Complexidade |
-|---|---|---|---|---|
-| BM25 | 5–30ms | $0 | baseline | Baixa |
-| Busca Densa | 20–80ms | $0.02/1M embed | +20–30% | Média |
-| Híbrida + RRF ⭐ | 30–120ms | BM25 + embed | +25–40% | Média |
-| SPLADE | 20–60ms | $0 (local) | +15–25% | Média |
-| MMR | +5–20ms | $0 | +5–15% diversidade | Baixa |
-| Multi-Index | N× busca | N× embed | +20–35% | Alta |
+| Estratégia      | Latência | Custo/query    | Qualidade          | Complexidade |
+| --------------- | -------- | -------------- | ------------------ | ------------ |
+| BM25            | 5–30ms   | $0             | baseline           | Baixa        |
+| Busca Densa     | 20–80ms  | $0.02/1M embed | +20–30%            | Média        |
+| Híbrida + RRF ⭐ | 30–120ms | BM25 + embed   | +25–40%            | Média        |
+| SPLADE          | 20–60ms  | $0 (local)     | +15–25%            | Média        |
+| MMR             | +5–20ms  | $0             | +5–15% diversidade | Baixa        |
+| Multi-Index     | N× busca | N× embed       | +20–35%            | Alta         |
 
 ### Pós-Retrieval
 
-| Estratégia | Latência | Custo/query | Ganho qualidade | Complexidade |
-|---|---|---|---|---|
-| Cross-Encoder ⭐ | 80–300ms | $0 (local) | +20–35% | Baixa |
-| LLM Reranker | 500ms–2s | $0.05–0.50 | +25–40% | Baixa |
-| Context Compression | +200–600ms | +LLM | +10–20% | Média |
-| Prompt Packing | <5ms | $0 | +5–15% | Baixa |
-| Knowledge Strips | +500ms–2s | alto | +20–35% | Alta |
-| Score Mínimo ⭐ | <1ms | $0 | −alucinação | Baixa |
-| Citation Grounding | +50–200ms | +tokens | +confiança | Baixa |
+| Estratégia          | Latência   | Custo/query | Ganho qualidade | Complexidade |
+| ------------------- | ---------- | ----------- | --------------- | ------------ |
+| Cross-Encoder ⭐     | 80–300ms   | $0 (local)  | +20–35%         | Baixa        |
+| LLM Reranker        | 500ms–2s   | $0.05–0.50  | +25–40%         | Baixa        |
+| Context Compression | +200–600ms | +LLM        | +10–20%         | Média        |
+| Prompt Packing      | <5ms       | $0          | +5–15%          | Baixa        |
+| Knowledge Strips    | +500ms–2s  | alto        | +20–35%         | Alta         |
+| Score Mínimo ⭐      | <1ms       | $0          | −alucinação     | Baixa        |
+| Citation Grounding  | +50–200ms  | +tokens     | +confiança      | Baixa        |
 
 ---
 
@@ -1114,24 +1124,25 @@ Latência: ~100ms | Custo: mínimo | Qualidade: aceitável para queries simples
 ### Configuração no BuscaAI (rag_settings.py)
 
 ```python
-# Pipeline balanceado — recomendado para produção
-PRE_FILTERING = {"enabled": True, "strategy": "bm25", "language": "pt"}
+
+PRE_RETRIEVAL= {
+  "enabled": True,
+  "query_expansion": {"enabled": False},
+  "hyde":            {"enabled": False},
+}
+
+PRE_FILTERING = {"enabled": True, "language": "pt"}
 
 RETRIEVAL = {
-    "strategy":       "hybrid",
-    "top_k":          50,
-    "reranker":       True,
-    "reranker_model": "cross-encoder",
-    "final_top_k":    5,
+    "strategy": "hybrid",  # "hybrid", "dense", "lexical"
+    "top_k": 50,
 }
 
-CHAT = {
-    "reformulacao": {"enabled": True, "provider": "groq"},
-}
-
-LLM_FEATURES = {
-    "query_expansion": {"enabled": False},
-    "hyde":            {"enabled": False},
+POST_RETRIEVAL = {
+    "reranker": {"enabled": True, "model": "cross-encoder"},
+    "score_minimo": {"enabled": False, "threshold": 0.5},
+    "prompt_packing": {"enabled": False},
+    "context_compression": {"enabled": False},
 }
 
 CACHE = {"enabled": True, "ttl": 3600}

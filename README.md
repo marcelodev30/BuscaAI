@@ -27,13 +27,85 @@ O desenvolvedor configura um arquivo central (`rag_settings.py`), sobe o ambient
 rag_settings.py  →  rag up  →  rag ingest  →  rag search "sua query"
 ```
 
+
 ---
+ 
+## As duas formas de buscar (conceito central)
+ 
+Antes de tudo, é importante entender o modelo do BuscaAI. **Só existem duas formas de recuperar um chunk**, e o chunk vive **sempre dentro de um banco de dados** — nunca solto em memória:
+ 
+```
+1. BUSCA LEXICAL (palavra-chave)   → BM25 ou SPLADE/esparso 
+2. BUSCA SEMÂNTICA                 → vetor denso (embedding)
+```
+
+> **Busca lexical** — encontra chunks que contêm as palavras da pergunta (ou termos relacionados).  
+> **Busca semântica** — encontra chunks com significado similar, mesmo sem a palavra exata.  
+> Exemplo: "cancelar" vs "rescisão" - lexical pode falhar, semântica acha.
+ 
+Quem escolhe o método escolhe o banco, e fica restrito ao que aquele banco oferece. Por isso o BuscaAI trabalha com **duas arquiteturas possíveis**, e você escolhe uma:
+ 
+```
+┌───────────────────────────────────────────────────────────────┐
+│ OPÇÃO A — OpenSearch (uma engine faz busca lexical + denso)   │
+│                                                               │
+│   • busca lexical    → BM25 nativo do OpenSearch              │
+│   • busca semântica  → vetor denso (embedding)                │
+│   • hybrid           → RRF combina BM25 + vetor denso         │
+│   • pré-filtragem    → o próprio BM25 do OpenSearch           │
+│                                                               │
+│   Não há banco separado. O chunk vive no índice OpenSearch.   │
+└───────────────────────────────────────────────────────────────┘
+ 
+┌───────────────────────────────────────────────────────────────┐
+│ OPÇÃO B — Qdrant (uma engine faz busca denso + esparso)       │
+│                                                               │
+│   • busca semântica  → vetor denso (embedding)                │
+│   • busca lexical    → vetor esparso (SPLADE)                 │
+│   • hybrid           → RRF combina vetor denso + esparso      │
+│   • pré-filtragem    → o vetor esparso do próprio Qdrant      │
+│                                                               │
+│   Não há índice BM25 separado. O chunk vive no Qdrant.        │
+└───────────────────────────────────────────────────────────────┘
+```
+
+> **RRF (Reciprocal Rank Fusion)** — algoritmo que recebe os rankings
+> dos dois métodos e os combina num resultado único, dando peso a chunks
+> que aparecem bem nos dois. Não precisa normalizar scores — só usa a
+> posição no ranking.
+ 
+## Quando escolher cada opção
+ 
+|                               | OpenSearch                                                             | Qdrant                            |
+| ----------------------------- | ---------------------------------------------------------------------- | --------------------------------- |
+| **Lexical via**               | BM25 clássico                                                          | SPLADE (neural)                   |
+| **Expande sinônimos**         | ❌ não                                                                  | ✅ sim                             |
+| **Configuração**              | zero — BM25 já está lá                                                 | você roda o **modelo SPLADE**         |
+| **Base grande (> 100k)**      | funciona bem                                                           | vantagem no lexical               |
+| **Termos técnicos / IDs**     | ótimo                                                                  | bom                               |
+| **Linguagem natural variada** | limitado                                                               | ótimo                             |
+| **Ideal para**                | já usa Elasticsearch ou OpenSearch  | base grande, sinônimos frequentes |
+ 
+---
+## Regra de ouro
+ 
+O que você **salva na ingestão** determina o que pode **buscar depois** — sem volta.
+ 
+```
+só vetor denso        →  só busca semântica disponível
+vetor denso + BM25    →  semântica, lexical ou híbrida  (OpenSearch)
+vetor denso + esparso →  semântica, lexical ou híbrida  (Qdrant)
+```
+ 
+Não existe "índice BM25 próprio carregado na memória do processo". O papel
+lexical é sempre uma capacidade do banco escolhido: **BM25 do OpenSearch** ou
+**o vetor esparso do Qdrant**.
 
 ## Por que BuscaAI
 
 | Problema                                     | Como o BuscaAI resolve                                        |
 | -------------------------------------------- | ------------------------------------------------------------- |
-| Busca vetorial perde termos exatos           | Busca híbrida: denso + esparso + RRF                          |
+| Busca vetorial perde termos exatos           | Busca híbrida: denso + esparso/lexical + RRF                  |
 | Bases gigantescas tornam a busca lenta       | Pré-filtragem léxica reduz o universo antes da busca vetorial |
 | Resultados relevantes ficam no meio da lista | Reranker cross-encoder reordena os candidatos                 |
 | Ingestão de milhões de docs trava a API      | Processamento assíncrono via Celery com checkpoint e retry    |
@@ -44,8 +116,8 @@ rag_settings.py  →  rag up  →  rag ingest  →  rag search "sua query"
 
 ## Funcionalidades
 
-- **Busca híbrida** — BM25 + embedding denso + RRF, com reranker opcional
-- **Pré-filtragem léxica** — índice invertido reduz o universo antes da busca vetorial
+- **Busca híbrida** — lexical (BM25 ou SPLADE) + embedding denso + RRF
+- **Pré-filtragem léxica** — feita pelo próprio banco (BM25 do OpenSearch ou vetor esparso do Qdrant) para reduzir o universo antes da busca vetorial
 - **Modular RAG** — pipeline como grafo LangGraph com roteamento condicional por tipo de query
 - **Ingestão assíncrona** — Celery + Redis com checkpoint, retry e status em tempo real
 - **Multi-source** — PDF, CSV, TXT, Markdown, PostgreSQL, MySQL
@@ -248,36 +320,38 @@ O BuscaAI é um **Modular RAG** orquestrado pelo LangGraph. Cada etapa do pipeli
 
 ### Fluxo de ingestão
 
+#### Opção A — OpenSearch
 ```
 fontes de dados
       ↓
 [chunking]
       ↓
-[metadados naturais extraídos]
-                ↓
-        ┌───────────────────┐
-        ↓                   ↓
-[embedding denso]   [embedding esparso]
-        ↓                   ↓
-        └───────────────────┘
-                ↓
-[Qdrant + índice invertido BM25]
+[metadados extraídos]
+      ↓
+      ├── [embedding denso]
+      └── [tokenizador BM25]  ← feito pelo próprio OpenSearch
+              ↓
+[OpenSearch — vetor denso (HNSW) + índice BM25]
+```
+
+#### Opção B — Qdrant
+```
+fontes de dados
+      ↓
+[chunking]
+      ↓
+[metadados extraídos]
+      ↓
+      ├── [embedding denso]
+      └── [embedding esparso (SPLADE)]  ← você roda o modelo
+              ↓
+[Qdrant — vetor denso (HNSW) + vetor esparso]
 ```
 
 ### Fluxo de busca
 
 ```
-query
-  ↓
-[cache?] ──sim──→ [retorna do cache]
-  ↓ não
-[classificar query]
-  ↓
-  ├── Simples  → [pré-filtro] → [busca híbrida] → [LLM gera resposta]
-  ├── MÉDIA    → [pré-filtro] → [busca] → [reranker] → [LLM gera resposta]
-  └── Multi-entidade → [decomposição] → [pré-filtro] → [busca híbrida] → [reranker] → [LLM gera resposta]
-                                       
-                                    
+query → [pré-filtro] → [busca] → [reranker] → [LLM gera resposta]
 ```
 
 ### Stack tecnológica
@@ -285,14 +359,13 @@ query
 | Camada              | Tecnologia                                         |
 | ------------------- | -------------------------------------------------- |
 | Orquestração        | LangGraph                                          |
-| Banco vetorial      | Qdrant                                             |
-| Pré-filtragem       | BM25 / índice invertido                            |
+| Banco vetorial      | Qdrant / OpenSearch                                |
+| Pré-filtragem       | SPLADE / BM25                                      |
 | Fusão de resultados | RRF (Reciprocal Rank Fusion)                       |
 | Embeddings          | OpenAI / Cohere / HuggingFace / FastEmbed (SPLADE) |
 | LLM                 | OpenAI / Anthropic / Groq / Ollama                 |
 | API                 | FastAPI                                            |
 | Fila de tarefas     | Celery + Redis                                     |
-| Banco de controle   | PostgreSQL                                         |
 | Cache               | Redis                                              |
 | Avaliação           | RAGAS                                              |
 | CLI                 | Click                                              |
@@ -308,16 +381,6 @@ Toda a configuração fica em um único arquivo `rag_settings.py`, inspirado no 
 # rag_settings.py
 import os
 
-# ════════════════════════════════════════════════════════════
-# CHAVES DE API — sempre via variável de ambiente
-# ════════════════════════════════════════════════════════════
-
-OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-GOOGLE_API_KEY    = os.environ.get("GOOGLE_API_KEY")
-GROQ_API_KEY      = os.environ.get("GROQ_API_KEY")
-COHERE_API_KEY    = os.environ.get("COHERE_API_KEY")
-VOYAGE_API_KEY    = os.environ.get("VOYAGE_API_KEY")
 
 # ════════════════════════════════════════════════════════════
 # BANCO VETORIAL
@@ -371,7 +434,7 @@ EMBEDDINGS = {
         "batch_size": 100,      # chunks por chamada de API
     },
     "sparse": {
-        "model":     "splade",  # splade | bm25
+        "model":     "splade",  # splade 
     },
 }
 
@@ -406,35 +469,26 @@ CHUNKING = {
 # Reduz o universo de busca antes da etapa vetorial.
 # Evita buscar em 10M chunks quando só 50k são candidatos válidos.
 #
-# strategy: bm25 | elasticsearch | opensearch | meilisearch | disabled
-#
-#   bm25          → índice próprio do BuscaAI, zero dependência extra
-#   elasticsearch → use se já tem ES rodando na empresa
-#   opensearch    → use para AWS ou licença Apache 2.0 obrigatória
-#   meilisearch   → use para hardware fraco ou base até ~10M chunks
 #   disabled      → desliga a pré-filtragem (não recomendado em escala)
 
 PRE_FILTERING = {
     "enabled":  True,
-    "strategy": "bm25",
     "top_n":    50000,          # candidatos que passam para a busca vetorial
-    "language": "pt",           # pt | en | multi
 }
 
 # ════════════════════════════════════════════════════════════
 # RETRIEVAL
 # ════════════════════════════════════════════════════════════
 #
-# strategy: bm25 | dense | hybrid
+# strategy: lexical | dense | hybrid
 #
-#   bm25    → só busca lexical, rápido, perde queries semânticas
+#   lexical → só busca lexical, rápido, perde queries semânticas
 #   dense   → só busca semântica, perde termos exatos (IDs, códigos)
 #   hybrid  → os dois + RRF, melhor resultado geral ← recomendado
 
 RETRIEVAL = {
     "strategy": "hybrid",
     "top_k": 50,           # candidatos que passam para o reranker ou para o LLM se não tiver reranker
-    "RRF": True            # RRF — fusão entre busca densa e esparsa                           
     "rrf_k": 60,           # constante de fusão, padrão de mercado
 }
 # ════════════════════════════════════════════════════════════
@@ -446,9 +500,10 @@ RETRIEVAL = {
 #   cohere         → $2/1k buscas, qualidade alta
 #   voyage         → primeiros 200M tokens grátis, melhor em benchmarks
 #   cross-encoder  → local, gratuito, ~100ms CPU ou ~10ms GPU
+#   llm_reranker   → usa LLM para reranker, mais caro que cross-encoder, mais preciso
 #   disabled       → sem reranker
 
-RERANKR={
+RERANKER = {
     "reranker": True,
     "reranker_model": "cross-encoder",  # local é mais barato em volume alto
     "final_top_k": 5,                # chunks que chegam ao LLM
@@ -556,7 +611,6 @@ LLM_FEATURES = {
 
     # Reranker via LLM — mais caro que cross-encoder, mais preciso
     "llm_reranker": {
-        "enabled":  False,
         "provider": "groq",
     },
 }
@@ -568,7 +622,7 @@ LLM_FEATURES = {
 # Cada chave é um nome de source que o dev passa para `rag ingest`.
 # Credenciais SEMPRE via variável de ambiente, nunca hardcoded.
 #
-# type: postgresql | mysql | sqlite | csv | json | api
+# type: postgresql | mysql | sqlite 
 
 SOURCES = {
 
@@ -640,7 +694,7 @@ CACHE = {
 #   s3    → produção, durável, exige AWS_ACCESS_KEY_ID no .env
 
 BACKUP = {
-    "qdrant": {
+    "vectorstore": {
         "enabled": True,
         "strategy": "incremental",  # incremental | full
         "full_every_days": 7,
@@ -648,20 +702,20 @@ BACKUP = {
         "retention_days":  30,
         "destination": {
             "type":   "local",
-            "path":   "/var/backups/buscaai/qdrant",
+            "path":   "/var/backups/buscaai/vectorstore",
             # Para S3, troque por:
             # "type":   "s3",
             # "bucket": os.environ.get("BACKUP_S3_BUCKET"),
-            # "prefix": "buscaai/qdrant",
+            # "prefix": "buscaai/vectorstore",
         },
     },
-    "postgres": {
+    "sqlite": {
         "enabled": True,
         "schedule": "2",     # diário às 2h
         "retention_days": 30,
         "destination": {
             "type": "local",
-            "path": "/var/backups/buscaai/postgres",
+            "path": "/var/backups/buscaai/sqlite",
         },
     },
 }
@@ -813,7 +867,7 @@ rag logs --tail 100                       # últimas 100 linhas
 rag benchmark \
   --query "prazo de rescisão" \
   --esperado "contrato.pdf:3" \
-  --estrategias bm25,dense,hybrid \
+  --estrategias lexical,dense,hybrid \
   --ragas
 ```
 
@@ -854,7 +908,7 @@ busca-ai/
 │   │   └── graph.py               # grafo LangGraph de ingestão
 │   │
 │   ├── retrieval/                 # pipeline de busca
-│   │   ├── prefilter/             # BM25 / índice invertido
+│   │   ├── prefilter/             # BM25/sparse
 │   │   ├── embeddings/            # openai, cohere, local
 │   │   ├── strategies/            # dense, sparse, hybrid
 │   │   ├── reranker/              # cohere, cross_encoder
@@ -937,7 +991,7 @@ resposta = httpx.post("http://localhost:8000/benchmark",
                 "resposta_esperada": "30 dias com aviso prévio"
             }
         ],
-        "estrategias": ["bm25", "dense", "hybrid"],
+        "estrategias": ["lexical", "dense", "hybrid"],
         "incluir_ragas": True
     }
 )
@@ -1056,17 +1110,17 @@ CUSTOM_LOADERS = {
 
 O repositório inclui documentação detalhada em `docs/`:
 
-| Arquivo                                      | Conteúdo                                            |
-| -------------------------------------------- | --------------------------------------------------- |
-| `01-conceitos-fundamentais.md`               | RAG, embeddings, BM25, banco vetorial               |
-| `02-estrategias-de-busca.md`                 | Densa, esparsa, híbrida, HNSW, pré-filtragem        |
-| `03-estrategias-de-rag.md`                   | Modular, Hybrid, Adaptive, Graph RAG                |
-| `04-chunking.md`                             | Estratégias de chunking                             |
-| `05-langgraph.md`                            | Grafos de execução, estado, arestas condicionais    |
-| `06-decisoes-e-tradeoffs.md`                 | Decisões de arquitetura com justificativas          |
-| `07-arquitetura-do-framework.md`             | Visão geral, settings, estrutura                    |
-| `08-operacao.md`                             | Ingestão assíncrona, atualização, backup, segurança |
-| `09-avaliacao.md`                            | RAGAS e métricas de retrieval                       |                      
+| Arquivo                          | Conteúdo                                            |
+| -------------------------------- | --------------------------------------------------- |
+| `01-conceitos-fundamentais.md`   | RAG, embeddings, BM25, banco vetorial               |
+| `02-estrategias-de-busca.md`     | Densa, esparsa, híbrida, HNSW, pré-filtragem        |
+| `03-estrategias-de-rag.md`       | Modular, Hybrid, Adaptive, Graph RAG                |
+| `04-chunking.md`                 | Estratégias de chunking                             |
+| `05-langgraph.md`                | Grafos de execução, estado, arestas condicionais    |
+| `06-decisoes-e-tradeoffs.md`     | Decisões de arquitetura com justificativas          |
+| `07-arquitetura-do-framework.md` | Visão geral, settings, estrutura                    |
+| `08-operacao.md`                 | Ingestão assíncrona, atualização, backup, segurança |
+| `09-avaliacao.md`                | RAGAS e métricas de retrieval                       |
                
 ---
 

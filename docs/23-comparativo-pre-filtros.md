@@ -30,10 +30,9 @@ Ganho típico de latência: 60–80% em bases acima de 5M chunks
 
 1. [Self-hosted (open-source)](#1-self-hosted)
 2. [Cloud gerenciado](#2-cloud-gerenciado)
-3. [Comparativo de custos por cenário](#3-comparativo-de-custos-por-cenário)
-4. [Funcionalidades comparadas](#4-funcionalidades-comparadas)
-5. [Guia de decisão](#5-guia-de-decisão)
-6. [Integração com o BuscaAI](#6-integração-com-o-buscaai)
+3. [Funcionalidades comparadas](#4-funcionalidades-comparadas)
+4. [Guia de decisão](#5-guia-de-decisão)
+5. [Integração com o BuscaAI](#6-integração-com-o-buscaai)
 
 ---
 
@@ -43,33 +42,13 @@ Custo de API zero — você instala e opera. Paga só a infraestrutura.
 
 | Engine | Licença | Linguagem | Latência busca | RAM mínima | Escala máx. | BM25 | Vetorial | Multilíngue | Setup | Custo infra/mês |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Índice próprio**  | Apache 2.0 | Python | 5–30ms | <100MB | ~10M chunks | ✓ | ✗ | ⚠ via NLTK | Zero | **$0 extra** |
 | **Meilisearch** | SSPL | Rust | 5–30ms | 200–500MB | ~50M docs | ✓ nativo | ✓ desde 2024 | ✓ 50+ idiomas | Fácil | ~$5–25/mês |
 | **Typesense** | GPL 3.0 | C++ | 1–10ms | 300–600MB | ~100M docs | ✓ nativo | ✓ nativo | ✓ 30+ idiomas | Fácil | ~$10–30/mês |
 | **OpenSearch** | Apache 2.0 | Java/Lucene | 10–50ms | 2–4 GB (JVM) | Bilhões | ✓ Lucene | ✓ kNN/HNSW | ✓ 30+ idiomas | Complexo | ~$50–150/mês |
 | **Elasticsearch** | SSPL/AGPL | Java/Lucene | 10–50ms | 2–4 GB (JVM) | Petabytes | ✓ Lucene | ✓ kNN + BBQ | ✓ 30+ idiomas | Complexo | ~$50–150/mês |
 | **Apache Solr** | Apache 2.0 | Java/Lucene | 15–60ms | 2–4 GB (JVM) | Bilhões | ✓ Lucene | ⚠ básico | ✓ 30+ idiomas | Complexo | ~$50–150/mês |
-| **BM25 via Whoosh** | BSD | Python | 30–200ms | <100MB | ~500k docs | ✓ | ✗ | ⚠ limitado | Zero | $0 |
 
 ### Detalhes self-hosted
-
----
-
-#### Índice próprio — padrão
-
-**O que é:**
-Índice invertido + BM25 implementado dentro do próprio BuscaAI em Python.
-Zero dependência externa — funciona sem subir nenhum serviço adicional.
-
-**Quando usar:**
-- Base até ~10M chunks
-- Time que não quer gerenciar serviços extras
-- POC e MVP que precisam funcionar rápido
-
-**Limitações:**
-- Carregado em memória do processo — não escala horizontalmente
-- Sem clustering nativo — um processo só
-- Sem dashboards prontos
 
 ---
 
@@ -232,8 +211,7 @@ Serviços gerenciados — sem ops, você paga pelo uso ou por capacidade.
 | **Elastic Cloud (Standard)** | Elasticsearch | SSPL/AGPL | 10–50ms | Petabytes | ✓ | ✓ BBQ | 14 dias trial | ~$95/mês | $200–5.000+/mês |
 | **Algolia** | Proprietário | Proprietária | <50ms | Bilhões | ✓ | ✓ NeuralSearch | 10k req/mês | ~$50/mês | $50–5.000+/mês |
 
-*AWS OpenSearch Serverless tem mínimo fixo de 2 OCUs × $0.24/h × 730h = ~$350/mês
-mesmo com zero queries — surpreende muitos times.
+
 
 ### Quando cloud compensa
 
@@ -247,77 +225,9 @@ mesmo com zero queries — surpreende muitos times.
 
 ---
 
-## 3. Comparativo de custos por cenário
 
-### Cenário A — POC (até 100k chunks)
 
-```
-Self-hosted:
-  Índice próprio BuscaAI   → $0    (embutido, zero serviço)
-  Meilisearch Docker       → $0    (dev local)
-  Typesense Docker         → $0    (dev local)
-
-Cloud:
-  Meilisearch Cloud        → $30/mês
-  Typesense Cloud          → ~$30/mês
-  AWS OpenSearch           → AWS Free Tier (limitado)
-
-Veredicto: índice próprio ou Docker local — custo zero
-```
-
-### Cenário B — 1M chunks, produção pequena
-
-```
-Self-hosted:
-  Índice próprio BuscaAI   → $0    (embutido) ← mais barato
-  Meilisearch              → ~$10/mês (VPS pequena)
-  Typesense                → ~$15/mês
-
-Cloud:
-  Meilisearch Cloud        → $30/mês
-  Typesense Cloud          → ~$30/mês
-  AWS OpenSearch           → ~$70/mês
-  Elastic Cloud            → ~$95/mês
-
-Veredicto: índice próprio resolve, Meilisearch se precisar de features
-```
-
-### Cenário C — 10M chunks, produção média
-
-```
-Self-hosted:
-  Meilisearch              → ~$25/mês (VPS 4GB RAM) ← mais barato
-  Typesense                → ~$30/mês
-  OpenSearch               → ~$80/mês (servidor 8GB)
-  Elasticsearch            → ~$80/mês
-
-Cloud:
-  Meilisearch Cloud        → ~$100/mês
-  Typesense Cloud          → ~$100/mês
-  AWS OpenSearch           → ~$200/mês
-  Elastic Cloud            → ~$300/mês
-
-Veredicto: self-hosted vence. Meilisearch é o mais leve e barato
-```
-
-### Cenário D — 100M+ chunks, escala grande
-
-```
-Self-hosted:
-  OpenSearch               → ~$200–400/mês (cluster)
-  Elasticsearch            → ~$200–400/mês (cluster)
-
-Cloud:
-  AWS OpenSearch Service   → ~$500–1.000/mês
-  AWS OpenSearch Serverless → ~$350–1.000/mês
-  Elastic Cloud            → ~$500–2.000+/mês
-
-Veredicto: self-hosted obrigatório em escala. Cloud só com SLA.
-```
-
----
-
-## 4. Funcionalidades comparadas
+## 3. Funcionalidades comparadas
 
 ```
 FUNCIONALIDADE          ÍNDICE    MEILI   TYPESENSE  OPENSEARCH  ELASTIC
@@ -340,12 +250,9 @@ Apache 2.0 puro         ✓         ✗ SSPL  ✗ GPL      ✓           ✗ SSP
 
 ---
 
-## 5. Guia de decisão
+## 4. Guia de decisão
 
 ```
-BASE < 10M CHUNKS, SEM SERVIÇO EXTRA:
-  → Índice próprio BuscaAI (padrão, zero dependência)
-
 HARDWARE FRACO OU POC RÁPIDO:
   → Meilisearch Docker (~200MB RAM, setup 5 min)
 
@@ -382,20 +289,13 @@ CHECKLIST:
 
 ---
 
-## 6. Integração com o BuscaAI
+## 5. Integração com o BuscaAI
 
 O BuscaAI configura a engine de pré-filtragem via `rag_settings.py`:
 
 ```python
 # rag_settings.py
 
-# PADRÃO — índice próprio BuscaAI (zero dependência)
-PRE_FILTERING = {
-    "enabled":  True,
-    "strategy": "bm25",       # índice invertido próprio
-    "top_n":    50000,         # candidatos para a busca vetorial
-    "language": "pt",          # pt | en | multi
-}
 
 # SELF-HOSTED — Meilisearch (hardware fraco, POC)
 PRE_FILTERING = {

@@ -1,8 +1,0 @@
-.env
-.DS_Store
-.gitignore
-__pycache__/
-venv_test
-examples
-29-testes-litellm-docling.md
-30-revisao-python-buscaai.md

@@ -7,3 +7,5 @@ examples
 30-revisao-python-buscaai.md
 examples/01/index.py
 examples/02/index.py
+.DS_Store
+.gitignore

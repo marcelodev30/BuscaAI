@@ -1,11 +1,8 @@
 .env
 .DS_Store
+.gitignore
 __pycache__/
 venv_test
 examples
 29-testes-litellm-docling.md
 30-revisao-python-buscaai.md
-examples/01/index.py
-examples/02/index.py
-.DS_Store
-.gitignore

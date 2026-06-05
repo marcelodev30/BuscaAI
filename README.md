@@ -108,7 +108,6 @@ lexical é sempre uma capacidade do banco escolhido: **BM25 do OpenSearch** ou
 | Busca vetorial perde termos exatos           | Busca híbrida: denso + esparso/lexical + RRF                  |
 | Bases gigantescas tornam a busca lenta       | Pré-filtragem léxica reduz o universo antes da busca vetorial |
 | Resultados relevantes ficam no meio da lista | Reranker cross-encoder reordena os candidatos                 |
-| Ingestão de milhões de docs trava a API      | Processamento assíncrono via Celery com checkpoint e retry    |
 | Difícil saber se o RAG está funcionando bem  | Avaliação integrada com RAGAS (4 métricas)                    |
 | Trocar de modelo LLM exige refatoração       | Provedores plugáveis via configuração                         |
 
@@ -119,7 +118,6 @@ lexical é sempre uma capacidade do banco escolhido: **BM25 do OpenSearch** ou
 - **Busca híbrida** — lexical (BM25 ou SPLADE) + embedding denso + RRF
 - **Pré-filtragem léxica** — feita pelo próprio banco (BM25 do OpenSearch ou vetor esparso do Qdrant) para reduzir o universo antes da busca vetorial
 - **Modular RAG** — pipeline como grafo LangGraph com roteamento condicional por tipo de query
-- **Ingestão assíncrona** — Celery + Redis com checkpoint, retry e status em tempo real
 - **Multi-source** — PDF, CSV, TXT, Markdown, PostgreSQL, MySQL
 - **LLM plugável** — OpenAI, Anthropic, Groq, Gemin, Ollama (configurável por etapa do pipeline)
 - **Chat com histórico** — contexto de conversa com reformulação de query e streaming
@@ -365,7 +363,6 @@ query → [pré-filtro] → [busca] → [reranker] → [LLM gera resposta]
 | Embeddings          | OpenAI / Cohere / HuggingFace / FastEmbed (SPLADE) |
 | LLM                 | OpenAI / Anthropic / Groq / Ollama                 |
 | API                 | FastAPI                                            |
-| Fila de tarefas     | Celery + Redis                                     |
 | Cache               | Redis                                              |
 | Avaliação           | RAGAS                                              |
 | CLI                 | Click                                              |
@@ -386,12 +383,13 @@ import os
 # BANCO VETORIAL
 # ════════════════════════════════════════════════════════════
 #
-# backend: qdrant | pgvector | chroma | pinecone
+# backend: qdrant | pgvector | chroma | pinecone**
 #
-#   qdrant   → padrão, melhor para produção, suporta híbrido nativo
-#   pgvector → use se já tem Postgres e a base é pequena (<10M chunks)
-#   chroma   → use para POC e desenvolvimento local (embedded)
-#   pinecone → use se não quer gerenciar infra (cloud gerenciado)
+
+#   qdrant      → padrão. Faz denso + esparso (SPLADE)
+#   pgvector    → use se já tem Postgres e a base é pequena (<10M chunks)
+#   chroma      → use para POC e desenvolvimento local (embedded)
+#   pinecone    → use se não quer gerenciar infra (cloud gerenciado)
 
 VECTOR_STORE = {
     "backend": "qdrant",
@@ -406,6 +404,15 @@ VECTOR_STORE = {
                                 # maior = mais preciso, mais lento
     "quantization":     False,  # True economiza RAM (~4x), perde ~5% qualidade
     "on_disk":          False,  # True para bases muito grandes (troca RAM por disco)
+}
+
+
+# Alternativa — OpenSearch (lexical + denso na mesma engine):
+VECTOR_STORE = {
+    "backend": "opensearch",
+    "host":    os.environ.get("OPENSEARCH_HOST", "localhost"),
+    "port":    9200,
+    "index":   "buscaai",
 }
 
 # ════════════════════════════════════════════════════════════
@@ -434,7 +441,7 @@ EMBEDDINGS = {
         "batch_size": 100,      # chunks por chamada de API
     },
     "sparse": {
-        "model":     "splade",  # splade 
+        "model": "splade",  # splade usado quando backend=qdrant 
     },
 }
 
@@ -469,11 +476,11 @@ CHUNKING = {
 # Reduz o universo de busca antes da etapa vetorial.
 # Evita buscar em 10M chunks quando só 50k são candidatos válidos.
 #
-#   disabled      → desliga a pré-filtragem (não recomendado em escala)
+#   disabled  → desliga a pré-filtragem (não recomendado em escala)
 
 PRE_FILTERING = {
     "enabled":  True,
-    "top_n":    50000,          # candidatos que passam para a busca vetorial
+    "top_n":    50000, # candidatos que passam para a busca vetorial
 }
 
 # ════════════════════════════════════════════════════════════
@@ -488,20 +495,18 @@ PRE_FILTERING = {
 
 RETRIEVAL = {
     "strategy": "hybrid",
-    "top_k": 50,           # candidatos que passam para o reranker ou para o LLM se não tiver reranker
-    "rrf_k": 60,           # constante de fusão, padrão de mercado
+    "top_k": 50, # candidatos que passam para o reranker ou para o LLM se não tiver reranker
+    "rrf_k": 60, # constante de fusão, padrão de mercado
 }
+
 # ════════════════════════════════════════════════════════════
 # Reranker — reordena os top_k candidatos
 # ════════════════════════════════════════════════════════════
 #
-# model: cohere | voyage | cross-encoder 
+# model: llm_reranker | cross-encoder 
 
-#   cohere         → $2/1k buscas, qualidade alta
-#   voyage         → primeiros 200M tokens grátis, melhor em benchmarks
 #   cross-encoder  → local, gratuito, ~100ms CPU ou ~10ms GPU
 #   llm_reranker   → usa LLM para reranker, mais caro que cross-encoder, mais preciso
-#   disabled       → sem reranker
 
 RERANKER = {
     "reranker": True,
@@ -708,16 +713,7 @@ BACKUP = {
             # "bucket": os.environ.get("BACKUP_S3_BUCKET"),
             # "prefix": "buscaai/vectorstore",
         },
-    },
-    "sqlite": {
-        "enabled": True,
-        "schedule": "2",     # diário às 2h
-        "retention_days": 30,
-        "destination": {
-            "type": "local",
-            "path": "/var/backups/buscaai/sqlite",
-        },
-    },
+    }
 }
 
 # ════════════════════════════════════════════════════════════

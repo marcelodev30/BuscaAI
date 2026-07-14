@@ -105,7 +105,7 @@ Ele não é necessariamente especialista em Machine Learning ou RAG.
 
 ```
 O1 — Facilidade de adoção
-     Dev consegue ter o sistema funcionando em < 30 minutos.
+     Dev consegue ter o sistema funcionando em  poucos minutos.
 
 O2 — Qualidade de retrieval
      Recall@5 ≥ 0.75 e Faithfulness ≥ 0.80 out-of-the-box,
@@ -133,9 +133,9 @@ Documentação suficiente para começar sem suporte: sim
 Recall@5 (busca híbrida):         ≥ 0.75
 Precision@5:                      ≥ 0.70
 Faithfulness (RAGAS):             ≥ 0.80
-Hallucination Rate:               ≤ 0.15
-Latência p95 (sem reranker):      ≤ 500ms
-Latência p95 (com reranker):      ≤ 1.500ms
+Hallucination Rate:               ? 
+Latência p95 (sem reranker):      ?
+Latência p95 (com reranker):      ?
 ```
 
 **Escalabilidade:**
@@ -314,10 +314,10 @@ ENTREGÁVEIS
   ✓ Backup automático
 
 MARCOS
-  M1: pipeline de ingestão testado com 3 tipos de documento
+  M1: pipeline de ingestão
   M2: busca híbrida com Recall@5 ≥ 0.75 em dataset de avaliação
   M3: chat com histórico, reformulação e streaming
-  M4: docker-compose up → funcionando em < 5 minutos
+  M4: docker-compose up → funcionando em poucos minutos
 ```
 
 ### Fase 2 — v1.x (produto)

@@ -1,0 +1,35 @@
+
+
+Pre-Retrievall:
+  ativo: true
+  provider: openai
+  estrategia: Query_Rewriting # HyDE,Query Rewriting, Query Expansion, Query Decomposition
+  
+Retrieval:
+  estrategia: hibrida #dense, sparse, hibrida
+  top_k: 50
+  rrf_k: 60
+
+Post-Retrieval:
+  ativo: true
+  provider: local
+  model: bge-reranker-base # BAAI/bge-reranker-large
+  final_top_k: 5
+
+Generation:
+  provider: gemini
+  model: gemini/gemini-2.0-flash
+  
+Embedding:
+  dense:
+    provider: openai
+    model: text-embedding-3-sm # BAAI/bge-m3
+    dimensions: 1536
+  sparse:
+    enabled: False
+    model: prithivida/Splade_PP_en_v1
+
+chunking:
+  strategy: recursive # recursive, semantic, markdown
+  chunk_size: 512
+  overlap: 50

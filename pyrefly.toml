@@ -1,8 +1,0 @@
-project-excludes = [
-    "**/venv_test/**",
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/.git/**",
-    "**/build/**",
-    "**/dist/**",
-]

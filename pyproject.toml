@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-buscaai = "cli:cli"
+buscaai = "main:main"
 
 [build-system]
 requires = ["hatchling"]

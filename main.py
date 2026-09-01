@@ -1,46 +1,52 @@
-from langchain_elasticsearch import ElasticsearchStore, DenseVectorStrategy,BM25Strategy
-from langchain_ollama import OllamaEmbeddings
-from langchain_litellm import ChatLiteLLM
+from litellm.exceptions import ServiceUnavailableError, RateLimitError, APIError
+import argparse
 
-from system_prompt import formatar, prompt 
-import logging
-import os
-from dotenv import load_dotenv
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
 
-logging.getLogger("LiteLLM").setLevel(logging.ERROR)
-load_dotenv() 
+console = Console()
 
-embeddings = OllamaEmbeddings(
-    model="bge-m3",
-    base_url=os.getenv("OLLAMA_URL"), num_ctx=512
-)
+def main():
+    parser = argparse.ArgumentParser(prog="buscaai")
+    sub = parser.add_subparsers(dest="comando", required=True)
 
-elastic = ElasticsearchStore(
-    index_name="rag-v3",
-    embedding=embeddings,
-    es_url=os.getenv("ES_URL"),
-    es_user=os.getenv("ES_USER"),
-    es_password=os.getenv("ES_PASSWORD"),
-    strategy=DenseVectorStrategy(),
-)
+    p_search = sub.add_parser("search", help="Busca no índice e responde")
+    p_search.add_argument("pergunta")
+    p_search.add_argument("-k", type=int, default=10, help="Nº de documentos")
 
-llm = ChatLiteLLM(
-    model="gemini/gemini-3.6-flash",
-    temperature=0,
-    max_tokens=2000,
-)
+    args = parser.parse_args()
 
-def buscar(question: str, k: int = 10):
-    retriever = elastic.as_retriever(search_kwargs={"k": k})
-    return retriever.invoke(question)
+    if args.comando == "search":
+        with console.status("[bold cyan]Carregando..."):
+            from rag import buscar, gerar
+
+        with console.status("[bold cyan]Buscando no índice..."):
+            docs = buscar(args.pergunta, k=args.k)
+
+        console.print(f"[dim]{len(docs)} documentos encontrados[/dim]")
+        
+        try:
+            with console.status("[bold cyan]Gerando resposta..."):
+                resposta = gerar(args.pergunta, docs)
+
+        except (ServiceUnavailableError) as e:
+            console.print("[bold red]O modelo está sobrecarregado no momento.[/bold red]")
+            console.print("[dim]Tente novamente em alguns instantes.[/dim]")
+            raise SystemExit(1)
+
+        console.print()
+        console.print(f"[bold]❯[/bold] [italic]{args.pergunta}[/italic]\n")
+        console.print(
+            Panel(
+                Markdown(resposta),
+                border_style="cyan",
+                padding=(1, 2),
+            )
+        )
+        fontes = {d.metadata.get("filename", "?") for d in docs}
+        console.print(f"\n[dim]Fontes: {', '.join(sorted(fontes))}[/dim]")
 
 
-def gerar(question: str, docs) -> str:
-
-    augmented = prompt.invoke({
-        "context": formatar(docs),
-        "question": question})
-
-    return llm.invoke(augmented).content
-
-
+if __name__ == "__main__":
+    main()

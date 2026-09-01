@@ -1,11 +1,6 @@
 """
-Pipeline de ingestão RAG — ponta a ponta, na mão (sem abstração LangChain).
-
 Fluxo:
     load PDF -> chunks -> metadados+ids -> embeddings (denso+esparso) -> Qdrant
-
-Vantagem de fazer assim: controle total. Você monta o payload exatamente como
-quer, sem converter para Document e de volta. Cada etapa é uma função isolada.
 
 Requisitos:
     pip install docling "docling-core[chunking]" qdrant-client fastembed litellm transformers

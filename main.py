@@ -35,7 +35,6 @@ def buscar(question: str, k: int = 10):
     return retriever.invoke(question)
 
 
-
 def gerar(question: str, docs) -> str:
 
     augmented = prompt.invoke({

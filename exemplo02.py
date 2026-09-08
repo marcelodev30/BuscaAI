@@ -33,23 +33,12 @@ class PreFiltroRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
-        busca_es = elastic_client.search(
-            index="rag-v3",
-            query={
-                "bool": {
-                    "must": [{"match": {"text": query}}],
-                    "must_not": {
-                        "terms": {
-                            "metadata.headings.keyword": list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                        }
-                    },
-                }
-            },
-            size=self.n_bm25,
-            _source=False,
-        )
+        busca_elasticsearch = elastic_client.search(
+              index="rag-v3",
+              query={"match": {"text": query}},
+              size=100)
 
-        ids = [h["_id"] for h in busca_es["hits"]["hits"]]
+        ids = [h["_id"] for h in busca_elasticsearch["hits"]["hits"]]
         if not ids:
             return []
 

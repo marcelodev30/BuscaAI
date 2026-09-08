@@ -13,25 +13,19 @@ import os
 from dotenv import load_dotenv
 load_dotenv() 
 
-elastic_client = Elasticsearch("http://192.168.0.165:9200", request_timeout=120, retry_on_timeout=True,basic_auth=("elastic","dRWbd49Fg9QSMpdeg"))
+elastic_client = Elasticsearch(os.getenv("ES_URL"), request_timeout=120, retry_on_timeout=True,basic_auth=("elastic","dRWbd49Fg9QSMpdeg"))
 
 embedder_modelo = SentenceTransformer("BAAI/bge-m3", device="mps")
 embedder_modelo.max_seq_length = 512
 
-qdrant_client = QdrantClient(url="http://192.168.0.165:6333")
+qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL"))
 
 def buscar_com_prefiltro(query: str,k:int):
     # Estagio 1: ES corta o universo
     busca_elasticsearch = elastic_client.search(
-        index="rag-v3", 
-        body={
-        "query": {
-            "bool": {
-                "must": [{"match": {"text": query}}],
-                "must_not": {"terms": {"metadata.headings": list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")}},
-            }
-        },
-        "size": 100,})
+        index="rag-v3",
+        query={"match": {"text": query}},
+        size=100)
     
     ids = [h["_id"] for h in busca_elasticsearch["hits"]["hits"]]
     if not ids:

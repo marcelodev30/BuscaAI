@@ -1,5 +1,5 @@
 from langchain_elasticsearch import ElasticsearchStore, DenseVectorStrategy,BM25Strategy
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_litellm import ChatLiteLLM
 
 from system_prompt import formatar, prompt 
@@ -10,9 +10,10 @@ from dotenv import load_dotenv
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 load_dotenv() 
 
-embeddings = OllamaEmbeddings(
-    model="bge-m3",
-    base_url=os.getenv("OLLAMA_URL"), num_ctx=512
+embeddings = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-m3",
+    model_kwargs={"device": "mps"},
+    encode_kwargs={"normalize_embeddings": True},
 )
 
 elastic = ElasticsearchStore(
@@ -39,8 +40,9 @@ def gerar(question: str, docs) -> str:
     augmented = prompt.invoke({
         "context": formatar(docs),
         "question": question})
-    
-   # Generation = llm.invoke(augmented).content
-    return augmented.to_string()
+
+    generation = llm.invoke(augmented).content
+
+    return generation.content
 
 

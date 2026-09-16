@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, String, Text, Uuid, func, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -46,3 +46,31 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GoogleIdentity(Base):
+    """Identidade externa do Google associada a um User (CLAUDE.md §11: dado de
+    identidade externa, tratado separado do domínio User)."""
+
+    __tablename__ = "google_identities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    google_sub: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # jti do refresh token emitido mais recentemente, usado para invalidar o
+    # anterior a cada rotação (ver src/auth/jwt.py).
+    current_refresh_jti: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

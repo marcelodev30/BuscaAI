@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = "postgresql+asyncpg://buscaai:buscaai@localhost:5432/buscaai"
 
+    google_client_id: str = ""
+
+    jwt_secret: str = "dev-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_access_expires_minutes: int = 60 * 4
+    jwt_refresh_expires_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:

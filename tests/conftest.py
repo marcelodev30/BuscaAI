@@ -34,7 +34,12 @@ async def db_session(db_sessionmaker):
 def client(db_sessionmaker):
     async def override_get_db():
         async with db_sessionmaker() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:

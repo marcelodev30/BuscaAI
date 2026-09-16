@@ -24,6 +24,12 @@ async def db_sessionmaker():
     await engine.dispose()
 
 
+@pytest_asyncio.fixture
+async def db_session(db_sessionmaker):
+    async with db_sessionmaker() as session:
+        yield session
+
+
 @pytest.fixture
 def client(db_sessionmaker):
     async def override_get_db():

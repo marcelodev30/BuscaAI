@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -27,6 +27,7 @@ from src.files.validation import (
     normalize_original_name,
 )
 from src.notebooks.repository import NotebookRepository
+from src.processing.pipeline import ProcessingPipeline, get_pipeline
 from src.storage.local import LocalStorage, get_storage, source_key_for
 
 router = APIRouter(prefix="/v1/notebooks/{notebook_id}/files", tags=["files"])
@@ -45,9 +46,11 @@ def _current_month_start() -> datetime:
 async def upload_file(
     notebook_id: uuid.UUID,
     upload: UploadFile,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     storage: LocalStorage = Depends(get_storage),
+    pipeline: ProcessingPipeline = Depends(get_pipeline),
 ) -> FileOut:
     """Ordem de validação conforme PRD §8 / CLAUDE.md §14: nada pesado acontece
     antes do arquivo passar por todas as verificações."""
@@ -102,6 +105,16 @@ async def upload_file(
         ) from exc
 
     await run_in_threadpool(storage.save, source_key, data)
+
+    # O background task roda antes do teardown do get_db, então o commit
+    # precisa ser explícito: o processamento abre outra sessão e só enxerga o
+    # arquivo depois que ele estiver commitado.
+    await db.commit()
+
+    # O processamento roda depois da resposta, no mesmo processo (PRD §18: sem
+    # Celery/Redis no MVP). O arquivo volta como `pending` e o cliente acompanha
+    # o estado pela listagem.
+    background_tasks.add_task(pipeline.process, file.id)
 
     return FileOut.model_validate(file)
 

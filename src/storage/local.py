@@ -20,6 +20,9 @@ class LocalStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
+    def read(self, key: str) -> bytes:
+        return self._resolve(key).read_bytes()
+
     def delete_prefix(self, prefix: str) -> None:
         path = self._resolve(prefix)
         if path == self.base_dir.resolve():

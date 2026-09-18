@@ -12,6 +12,16 @@ class Settings(BaseSettings):
 
     storage_dir: str = "./storage"
 
+    # Elasticsearch externo: a aplicação não sobe o serviço, só se conecta.
+    elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_user: str = ""
+    elasticsearch_password: str = ""
+    elasticsearch_index: str = "buscaai-chunks"
+
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimensions: int = 1024
+    embedding_batch_size: int = 16
+
     google_client_id: str = ""
 
     jwt_secret: str = "dev-secret-change-me"

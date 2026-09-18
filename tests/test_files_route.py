@@ -1,3 +1,7 @@
+import uuid
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.domain import quota
 
 
@@ -31,6 +35,57 @@ async def test_upload_pdf(client, user_factory, auth_headers, pdf_bytes, storage
     saved = list(storage_dir.rglob("*.pdf"))
     assert len(saved) == 1
     assert f"users/{user.id}/notebooks/{notebook['id']}" in saved[0].as_posix()
+
+
+async def test_upload_schedules_processing(client, user_factory, auth_headers, pdf_bytes, fake_pipeline):
+    user = await user_factory()
+    headers = auth_headers(user)
+    notebook = _create_notebook(client, headers)
+
+    response = _upload(client, headers, notebook["id"], pdf_bytes())
+
+    assert response.json()["status"] == "pending"
+    assert fake_pipeline.processed == [uuid.UUID(response.json()["id"])]
+
+
+async def test_upload_commits_before_scheduling_processing(
+    client, user_factory, auth_headers, pdf_bytes, fake_pipeline, monkeypatch
+):
+    """O background task roda antes do teardown do get_db. Se o upload não
+    commitar explicitamente, o processamento abre outra sessão e não encontra
+    o arquivo."""
+    user = await user_factory()
+    headers = auth_headers(user)
+    notebook = _create_notebook(client, headers)
+
+    events: list[str] = []
+    original_commit = AsyncSession.commit
+
+    async def spy_commit(self):
+        events.append("commit")
+        await original_commit(self)
+
+    async def spy_process(file_id):
+        events.append("process")
+
+    monkeypatch.setattr(AsyncSession, "commit", spy_commit)
+    monkeypatch.setattr(fake_pipeline, "process", spy_process)
+    events.clear()
+
+    _upload(client, headers, notebook["id"], pdf_bytes())
+
+    assert "process" in events
+    assert events.index("commit") < events.index("process")
+
+
+async def test_rejected_upload_does_not_schedule_processing(client, user_factory, auth_headers, fake_pipeline):
+    user = await user_factory()
+    headers = auth_headers(user)
+    notebook = _create_notebook(client, headers)
+
+    _upload(client, headers, notebook["id"], b"\x89PNG nao eh pdf", filename="foto.png")
+
+    assert fake_pipeline.processed == []
 
 
 async def test_upload_requires_authentication(client, user_factory, auth_headers, pdf_bytes):

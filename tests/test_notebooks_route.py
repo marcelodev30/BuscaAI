@@ -1,3 +1,6 @@
+import uuid
+
+
 async def test_create_notebook(client, user_factory, auth_headers):
     user = await user_factory()
 
@@ -191,6 +194,16 @@ async def test_delete_notebook_removes_stored_pdfs(client, user_factory, auth_he
     assert client.delete(f"/v1/notebooks/{notebook['id']}", headers=headers).status_code == 204
 
     assert list(storage_dir.rglob("*.pdf")) == []
+
+
+async def test_delete_notebook_clears_the_index(client, user_factory, auth_headers, fake_indexer):
+    user = await user_factory()
+    headers = auth_headers(user)
+    notebook = client.post("/v1/notebooks", json={"name": "Com índice"}, headers=headers).json()
+
+    client.delete(f"/v1/notebooks/{notebook['id']}", headers=headers)
+
+    assert fake_indexer.deleted_notebooks == [uuid.UUID(notebook["id"])]
 
 
 async def test_delete_notebook_keeps_files_of_other_notebooks(

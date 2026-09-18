@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from src.auth.dependencies import get_current_user
 from src.db.models import Notebook, User
@@ -10,6 +11,7 @@ from src.domain.quota import ensure_can_create_notebook
 from src.errors import AppError
 from src.notebooks.repository import NotebookRepository
 from src.notebooks.schemas import CreateNotebookRequest, NotebookOut, UpdateNotebookRequest
+from src.storage.local import LocalStorage, get_storage, notebook_prefix_for
 
 router = APIRouter(prefix="/v1/notebooks", tags=["notebooks"])
 
@@ -75,8 +77,12 @@ async def delete_notebook(
     notebook_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    storage: LocalStorage = Depends(get_storage),
 ) -> None:
     repository = NotebookRepository(db)
     notebook = await _get_owned_notebook(repository, notebook_id, current_user.id)
 
+    # As linhas de files somem por cascade; os PDFs no disco precisam ser
+    # apagados aqui, senão ficam órfãos.
     await repository.delete(notebook)
+    await run_in_threadpool(storage.delete_prefix, notebook_prefix_for(current_user.id, notebook_id))

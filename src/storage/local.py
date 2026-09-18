@@ -1,3 +1,4 @@
+import shutil
 import uuid
 from pathlib import Path
 
@@ -19,15 +20,19 @@ class LocalStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
-    def read(self, key: str) -> bytes:
-        return self._resolve(key).read_bytes()
+    def delete_prefix(self, prefix: str) -> None:
+        path = self._resolve(prefix)
+        if path == self.base_dir.resolve():
+            raise ValueError("delete_prefix não pode apagar o diretório base do storage.")
+        shutil.rmtree(path, ignore_errors=True)
 
-    def delete(self, key: str) -> None:
-        self._resolve(key).unlink(missing_ok=True)
+
+def notebook_prefix_for(user_id: uuid.UUID, notebook_id: uuid.UUID) -> str:
+    return f"users/{user_id}/notebooks/{notebook_id}"
 
 
 def source_key_for(user_id: uuid.UUID, notebook_id: uuid.UUID, file_id: uuid.UUID) -> str:
-    return f"users/{user_id}/notebooks/{notebook_id}/{file_id}.pdf"
+    return f"{notebook_prefix_for(user_id, notebook_id)}/{file_id}.pdf"
 
 
 def get_storage(request: Request) -> LocalStorage:

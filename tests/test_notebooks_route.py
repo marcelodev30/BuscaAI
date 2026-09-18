@@ -109,6 +109,41 @@ async def test_change_notebook_icon(client, user_factory, auth_headers):
     assert body["name"] == "Meu"
 
 
+async def test_update_notebook_rejects_null_name(client, user_factory, auth_headers):
+    user = await user_factory()
+    headers = auth_headers(user)
+    created = client.post("/v1/notebooks", json={"name": "Original"}, headers=headers).json()
+
+    response = client.patch(f"/v1/notebooks/{created['id']}", json={"name": None}, headers=headers)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert client.get(f"/v1/notebooks/{created['id']}", headers=headers).json()["name"] == "Original"
+
+
+async def test_update_notebook_with_empty_body_changes_nothing(client, user_factory, auth_headers):
+    user = await user_factory()
+    headers = auth_headers(user)
+    created = client.post("/v1/notebooks", json={"name": "Original", "icon": "📘"}, headers=headers).json()
+
+    response = client.patch(f"/v1/notebooks/{created['id']}", json={}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Original"
+    assert response.json()["icon"] == "📘"
+
+
+async def test_update_notebook_clears_icon_with_null(client, user_factory, auth_headers):
+    user = await user_factory()
+    headers = auth_headers(user)
+    created = client.post("/v1/notebooks", json={"name": "Meu", "icon": "📘"}, headers=headers).json()
+
+    response = client.patch(f"/v1/notebooks/{created['id']}", json={"icon": None}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["icon"] is None
+
+
 async def test_update_notebook_of_another_user_returns_not_found(client, user_factory, auth_headers):
     owner = await user_factory(email="dono@example.com")
     other = await user_factory(email="outro@example.com")
@@ -140,3 +175,40 @@ async def test_delete_notebook_of_another_user_returns_not_found(client, user_fa
 
     assert response.status_code == 404
     assert client.get(f"/v1/notebooks/{created['id']}", headers=auth_headers(owner)).status_code == 200
+
+
+async def test_delete_notebook_removes_stored_pdfs(client, user_factory, auth_headers, pdf_bytes, storage_dir):
+    user = await user_factory()
+    headers = auth_headers(user)
+    notebook = client.post("/v1/notebooks", json={"name": "Com arquivos"}, headers=headers).json()
+    client.post(
+        f"/v1/notebooks/{notebook['id']}/files",
+        files={"upload": ("manual.pdf", pdf_bytes(), "application/pdf")},
+        headers=headers,
+    )
+    assert list(storage_dir.rglob("*.pdf"))
+
+    assert client.delete(f"/v1/notebooks/{notebook['id']}", headers=headers).status_code == 204
+
+    assert list(storage_dir.rglob("*.pdf")) == []
+
+
+async def test_delete_notebook_keeps_files_of_other_notebooks(
+    client, user_factory, auth_headers, pdf_bytes, storage_dir
+):
+    user = await user_factory()
+    headers = auth_headers(user)
+    kept = client.post("/v1/notebooks", json={"name": "Fica"}, headers=headers).json()
+    removed = client.post("/v1/notebooks", json={"name": "Some"}, headers=headers).json()
+    for notebook in (kept, removed):
+        client.post(
+            f"/v1/notebooks/{notebook['id']}/files",
+            files={"upload": ("manual.pdf", pdf_bytes(), "application/pdf")},
+            headers=headers,
+        )
+
+    client.delete(f"/v1/notebooks/{removed['id']}", headers=headers)
+
+    remaining = [path.as_posix() for path in storage_dir.rglob("*.pdf")]
+    assert len(remaining) == 1
+    assert kept["id"] in remaining[0]

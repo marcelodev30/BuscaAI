@@ -1,3 +1,6 @@
+import io
+
+import pypdfium2 as pdfium
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -9,6 +12,7 @@ from src.config import get_settings
 from src.db.models import Base, User
 from src.db.session import get_db
 from src.main import app
+from src.storage.local import LocalStorage, get_storage
 from src.users.repository import UserRepository
 
 
@@ -34,7 +38,12 @@ async def db_session(db_sessionmaker):
 
 
 @pytest.fixture
-def client(db_sessionmaker):
+def storage_dir(tmp_path):
+    return tmp_path / "storage"
+
+
+@pytest.fixture
+def client(db_sessionmaker, storage_dir):
     async def override_get_db():
         async with db_sessionmaker() as session:
             try:
@@ -45,9 +54,26 @@ def client(db_sessionmaker):
                 raise
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_storage] = lambda: LocalStorage(storage_dir)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def pdf_bytes():
+    """PDF válido gerado em memória. Não é determinístico entre chamadas, então
+    testes de deduplicação devem reenviar os mesmos bytes."""
+
+    def _make(pages: int = 1, width: int = 595) -> bytes:
+        document = pdfium.PdfDocument.new()
+        for _ in range(pages):
+            document.new_page(width, 842)
+        buffer = io.BytesIO()
+        document.save(buffer)
+        return buffer.getvalue()
+
+    return _make
 
 
 @pytest_asyncio.fixture

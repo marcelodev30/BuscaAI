@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = "postgresql+asyncpg://buscaai:buscaai@localhost:5432/buscaai"
 
+    storage_dir: str = "./storage"
+
     google_client_id: str = ""
 
     jwt_secret: str = "dev-secret-change-me"

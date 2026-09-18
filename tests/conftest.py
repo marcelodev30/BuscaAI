@@ -4,9 +4,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
 
-from src.db.models import Base
+from src.auth.jwt import create_access_token
+from src.config import get_settings
+from src.db.models import Base, User
 from src.db.session import get_db
 from src.main import app
+from src.users.repository import UserRepository
 
 
 @pytest_asyncio.fixture
@@ -45,3 +48,27 @@ def client(db_sessionmaker):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def user_factory(db_sessionmaker):
+    async def _create(*, email: str = "dono@example.com", name: str = "Dono", plan: str = "free") -> User:
+        async with db_sessionmaker() as session:
+            user = await UserRepository(session).create(email=email, name=name)
+            user.plan = plan
+            await session.commit()
+            return user
+
+    return _create
+
+
+@pytest.fixture
+def auth_headers():
+    def _headers(user: User) -> dict[str, str]:
+        settings = get_settings()
+        token = create_access_token(
+            user.id, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm, expires_minutes=5
+        )
+        return {"Authorization": f"Bearer {token}"}
+
+    return _headers

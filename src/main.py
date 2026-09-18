@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.api.routes import auth, health
+from src.api.routes import auth, health, notebooks
 from src.config import get_settings
 from src.db.session import create_engine_and_sessionmaker
 from src.errors import register_exception_handlers
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(notebooks.router)
 
     return app
 
